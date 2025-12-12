@@ -81,5 +81,5 @@ if (is.dev) {
   // consistent and avoids Rollup externalization issues.
   void import('../modbus/modbus-ipc')
 } else {
-  require(join(__dirname, '../modbus/modbus-ipc'))
+  void import('../modbus/modbus-ipc')
 }

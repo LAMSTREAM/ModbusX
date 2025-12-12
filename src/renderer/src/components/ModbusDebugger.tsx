@@ -218,6 +218,8 @@ const ModbusDebugger: React.FC = () => {
       if (log.tx) addLog('TX', `[${ts}] ${buf2hex(log.tx)}`)
       if (log.rx) addLog('RX', `[${ts}] ${buf2hex(log.rx)}`)
     })
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
     return () => window.modbusAPI.unsubscribeRawLog(unsubscribe)
   }, [])
 
