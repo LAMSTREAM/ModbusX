@@ -92,6 +92,41 @@ const parseFC = (input: string): number => {
   return parseInt(s, 10)
 }
 
+/**
+ * Core formatting logic, extracted so it can be used by both Display and Copy action.
+ */
+const formatValue = (value: number, nextValue: number | undefined, format: DataFormat): string => {
+  switch (format) {
+    case 'HEX':
+      return `0x${value.toString(16).toUpperCase().padStart(4, '0')}`
+    case 'DEC_S':
+      return (value > 32767 ? value - 65536 : value).toString()
+    case 'UINT32': {
+      const u32 = ((value << 16) | (nextValue || 0)) >>> 0
+      return u32.toString()
+    }
+    case 'FLOAT': {
+      const buf = new ArrayBuffer(4)
+      const view = new DataView(buf)
+      view.setUint16(0, value, false)
+      view.setUint16(2, nextValue || 0, false)
+      // Check for NaN or Infinity roughly if needed, otherwise just toFixed
+      return view.getFloat32(0, false).toFixed(4)
+    }
+    case 'ASCII': {
+      const hi = (value >> 8) & 0xff
+      const lo = value & 0xff
+      return (
+        (hi > 31 && hi < 127 ? String.fromCharCode(hi) : '.') +
+        (lo > 31 && lo < 127 ? String.fromCharCode(lo) : '.')
+      )
+    }
+    case 'DEC_U':
+    default:
+      return value.toString()
+  }
+}
+
 // --- Register Block ---
 interface RegisterBlockProps {
   address: number
@@ -99,6 +134,11 @@ interface RegisterBlockProps {
   nextValue?: number
   format: DataFormat
   addrFormat: AddressFormat
+  // Selection Props
+  index: number
+  isSelected: boolean
+  onSelectionStart: (index: number) => void
+  onSelectionEnter: (index: number) => void
   onEdit: (addr: number, newVal: string) => void
 }
 
@@ -108,47 +148,25 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
   nextValue,
   format,
   addrFormat,
+  index,
+  isSelected,
+  onSelectionStart,
+  onSelectionEnter,
   onEdit
 }) => {
   const [editingVal, setEditingVal] = useState<string>('')
   const [isEditing, setIsEditing] = useState(false)
 
-  const getDisplayValue = () => {
-    switch (format) {
-      case 'HEX':
-        return `0x${value.toString(16).toUpperCase().padStart(4, '0')}`
-      case 'DEC_S':
-        return (value > 32767 ? value - 65536 : value).toString()
-      case 'UINT32': {
-        const u32 = ((value << 16) | (nextValue || 0)) >>> 0
-        return u32.toString()
-      }
-
-      case 'FLOAT': {
-        const buf = new ArrayBuffer(4)
-        const view = new DataView(buf)
-        view.setUint16(0, value, false)
-        view.setUint16(2, nextValue || 0, false)
-        return view.getFloat32(0, false).toFixed(4)
-      }
-
-      case 'ASCII': {
-        const hi = (value >> 8) & 0xff
-        const lo = value & 0xff
-        return (
-          (hi > 31 && hi < 127 ? String.fromCharCode(hi) : '.') +
-          (lo > 31 && lo < 127 ? String.fromCharCode(lo) : '.')
-        )
-      }
-
-      case 'DEC_U':
-      default:
-        return value.toString()
-    }
-  }
-
   const isReadOnly = format === 'FLOAT' || format === 'UINT32' || format === 'ASCII'
-  const displayVal = isEditing ? editingVal : getDisplayValue()
+
+  // Display string
+  const displayVal = isEditing ? editingVal : formatValue(value, nextValue, format)
+
+  // Label handling for 32-bit types (showing range)
+  const is32Bit = format === 'FLOAT' || format === 'UINT32'
+  const addressLabel = is32Bit
+    ? `${formatAddress(address, addrFormat)}-${formatAddress(address + 1, addrFormat).slice(-2)}`
+    : formatAddress(address, addrFormat)
 
   const handleFocus = () => {
     if (isReadOnly) return
@@ -172,6 +190,7 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Stop propagation so the global 'Ctrl+C' listener doesn't trigger while typing
     e.stopPropagation()
     if (e.key === 'Enter') {
       ;(e.target as HTMLInputElement).blur()
@@ -183,35 +202,41 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
 
   return (
     <div
+      onMouseDown={() => onSelectionStart(index)}
+      onMouseEnter={() => onSelectionEnter(index)}
       onClick={() => {
         if (!isEditing && !isReadOnly) handleFocus()
       }}
       style={{
-        background: isEditing ? '#fff' : '#f8f9fa',
-        border: isEditing ? '1px solid #2563eb' : '1px solid #e9ecef',
+        // Selection Styles: Blue background if selected
+        background: isSelected ? '#bfdbfe' : isEditing ? '#fff' : '#f8f9fa',
+        border: isSelected
+          ? '1px solid #3b82f6'
+          : isEditing
+            ? '1px solid #2563eb'
+            : '1px solid #e9ecef',
         borderRadius: '4px',
         padding: '4px 2px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        transition: 'all 0.1s',
+        transition: 'all 0.05s',
         position: 'relative',
         minWidth: '60px',
-        cursor: isReadOnly ? 'default' : 'text'
+        cursor: 'default',
+        userSelect: 'none' // Prevent native text selection during drag
       }}
     >
       <div
         style={{
           fontSize: '10px',
-          color: '#adb5bd',
+          color: isSelected ? '#1e3a8a' : '#adb5bd',
           marginBottom: '2px',
           fontFamily: 'monospace',
           userSelect: 'none'
         }}
       >
-        {isReadOnly
-          ? `${formatAddress(address, addrFormat)}..`
-          : formatAddress(address, addrFormat)}
+        {addressLabel}
       </div>
       <input
         value={displayVal}
@@ -228,7 +253,7 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
           fontWeight: 600,
           color: isEditing ? '#000' : isReadOnly ? '#2563eb' : '#495057',
           outline: 'none',
-          fontSize: '13px',
+          fontSize: is32Bit ? '14px' : '13px', // Larger font for 32-bit numbers
           fontFamily: 'monospace',
           pointerEvents: isReadOnly ? 'none' : 'auto'
         }}
@@ -260,6 +285,10 @@ const ModbusDebugger: React.FC = () => {
     null
   )
   const [dataFormat, setDataFormat] = useState<DataFormat>(initialConfig.dataFormat)
+
+  // --- Selection State ---
+  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null)
+  const [isSelecting, setIsSelecting] = useState(false)
 
   const [logs, setLogs] = useState<LogItem[]>([])
   const [showLogs, setShowLogs] = useState(initialConfig.showLogs)
@@ -323,7 +352,6 @@ const ModbusDebugger: React.FC = () => {
       logListRef.current.scrollTop = logListRef.current.scrollHeight
   }, [logs, showLogs])
 
-  // Define handleCommand here for useEffect dependency
   const handleCommand = (silent = false) => {
     const fcNum = parseFC(effectiveFc)
     if ([1, 2, 3, 4].includes(fcNum)) {
@@ -345,6 +373,66 @@ const ModbusDebugger: React.FC = () => {
     }
     return () => clearInterval(interval)
   }, [autoRead, connected, effectiveFc, address, countParam, addrFormat, settings, sending])
+
+  // --- Selection & Clipboard Logic ---
+
+  // 1. Mouse Up Handler (Global) to stop selecting
+  useEffect(() => {
+    const handleGlobalMouseUp = () => setIsSelecting(false)
+    window.addEventListener('mouseup', handleGlobalMouseUp)
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
+  }, [])
+
+  // 2. Keyboard Copy Handler
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Check for Ctrl+C or Cmd+C
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        if (!selection || !monitorData) return
+
+        // Don't trigger if user is focused on a text input (except our readonly registers which are divs)
+        if (
+          document.activeElement?.tagName === 'INPUT' ||
+          document.activeElement?.tagName === 'TEXTAREA'
+        ) {
+          // Optional: check if the input is one of the settings inputs vs the register input
+          // For simplicity, if we are editing a cell, we let native copy work.
+          // If we are just viewing, we do batch copy.
+          return
+        }
+
+        e.preventDefault()
+
+        const start = Math.min(selection.start, selection.end)
+        const end = Math.max(selection.start, selection.end)
+        const is32Bit = dataFormat === 'FLOAT' || dataFormat === 'UINT32'
+
+        const rows: string[] = []
+        // Simple strategy: Copy as tab-separated values
+        // If 32-bit, we skip odd indices in the iteration loop effectively
+
+        for (let i = start; i <= end; i++) {
+          if (is32Bit && i % 2 !== 0) continue // Skip hidden parts of 32bit nums
+
+          const val = monitorData.values[i]
+          const nextVal = monitorData.values[i + 1]
+          const str = formatValue(val, nextVal, dataFormat)
+          rows.push(str)
+        }
+
+        if (rows.length > 0) {
+          try {
+            await navigator.clipboard.writeText(rows.join('\t'))
+            addLog('SYS', `Copied ${rows.length} items to clipboard`)
+          } catch (err) {
+            console.error('Copy failed', err)
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selection, monitorData, dataFormat])
 
   const scanPorts = async () => {
     try {
@@ -444,6 +532,8 @@ const ModbusDebugger: React.FC = () => {
           count: count
         })
         const numValues = res.map((v) => (typeof v === 'boolean' ? (v ? 1 : 0) : v))
+        // Reset selection on new read to avoid index out of bounds confusion
+        setSelection(null)
         setMonitorData({ startAddr: addrNum, values: numValues })
         if (!silent) addLog('SYS', `Read ${res.length} items from ${addrStr}`)
       }
@@ -592,6 +682,18 @@ const ModbusDebugger: React.FC = () => {
   }
   const flexFixed = (w: string) => ({ flex: `0 0 ${w}` })
   const flexGrow = { flex: '1 1 120px' }
+
+  // Selection handlers
+  const handleSelectionStart = (idx: number) => {
+    setIsSelecting(true)
+    setSelection({ start: idx, end: idx })
+  }
+
+  const handleSelectionEnter = (idx: number) => {
+    if (isSelecting && selection) {
+      setSelection({ ...selection, end: idx })
+    }
+  }
 
   return (
     <div style={containerStyle}>
@@ -922,7 +1024,10 @@ const ModbusDebugger: React.FC = () => {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))',
+                // Dynamic Grid Column Width: ~70px for normal, ~140px for 32-bit types
+                gridTemplateColumns: `repeat(auto-fill, minmax(${
+                  dataFormat === 'FLOAT' || dataFormat === 'UINT32' ? '140px' : '70px'
+                }, 1fr))`,
                 gap: '8px'
               }}
             >
@@ -931,14 +1036,28 @@ const ModbusDebugger: React.FC = () => {
                 if (is32Bit && idx % 2 !== 0) return null
 
                 const currentAddr = monitorData.startAddr + idx
+
+                // Calculate selection state
+                let isSelected = false
+                if (selection) {
+                  const lower = Math.min(selection.start, selection.end)
+                  const upper = Math.max(selection.start, selection.end)
+                  // If start index is selected in 32bit mode, the visible block is selected
+                  isSelected = idx >= lower && idx <= upper
+                }
+
                 return (
                   <RegisterBlock
                     key={currentAddr}
+                    index={idx}
                     address={currentAddr}
                     value={val}
                     nextValue={monitorData.values[idx + 1]}
                     format={dataFormat}
                     addrFormat={addrFormat}
+                    isSelected={isSelected}
+                    onSelectionStart={handleSelectionStart}
+                    onSelectionEnter={handleSelectionEnter}
                     onEdit={handleCellEdit}
                   />
                 )
