@@ -12,10 +12,10 @@ export class ModbusLogger {
       rx: rx ? new Uint8Array(rx) : undefined
     }
 
-    // 推送给 IPC 订阅者
+    // Push to Subscriber
     this.subscribers.forEach((cb) => cb(log))
 
-    // 推送给前端窗口
+    // Push to Frontend
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('modbus-raw-log', log)
     })

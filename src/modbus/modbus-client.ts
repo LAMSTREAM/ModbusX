@@ -1,4 +1,3 @@
-// modbus-client.ts
 import ModbusRTU from 'modbus-serial'
 import { ModbusLogger } from './modbus-logger'
 import { ConnectionSettings, ModbusReadParams, ModbusWriteParams, ModbusReadResult } from './modbus'
@@ -15,7 +14,7 @@ export class ModbusClient {
     if (this.client) {
       try {
         const oldClient = this.client
-        this.client = null // 先置空，防止并发
+        this.client = null
         if (oldClient.isOpen) {
           await new Promise<void>((resolve) => oldClient.close(() => resolve()))
         }
@@ -105,12 +104,77 @@ export class ModbusClient {
         case 0x10:
           await this.client.writeRegisters(params.address, params.values as number[])
           break
-        default:
-          throw new Error(`Unsupported write function code: ${params.functionCode}`)
+        default: {
+          // Custom Function Code support
+          const slaveId = this.client?.getID()
+
+          // Convert Data
+          const dataBuf = this.createCustomWritePayload(params.address, params.values as number[])
+
+          // Call API
+          await new Promise<void>((resolve) => {
+            const clientAny = this.client as any
+
+            if (typeof clientAny.writeCustomFC !== 'function') {
+              console.error('API Error: writeCustomFC method missing')
+              resolve()
+              return
+            }
+
+            clientAny.writeCustomFC(slaveId, params.functionCode, dataBuf, (err: any, res: any) => {
+              if (err) {
+                console.warn(`CustomFC ${params.functionCode} warning:`, err.message)
+                resolve()
+                throw new Error('Something went wrong')
+              }
+              resolve()
+            })
+          })
+          break
+        }
       }
     } finally {
       this.tryLogTraffic()
     }
+  }
+
+  private createCustomWritePayload(address: number, data: number[]): Uint8Array {
+    if (address < 0 || address > 65535 || !Number.isInteger(address)) {
+      throw new Error('Invalid Address')
+    }
+
+    const registerCount = data.length
+    const dataBytesLength = registerCount * 2
+
+    if (dataBytesLength > 255) {
+      throw new Error(
+        `Data length (${dataBytesLength} bytes) exceeds the maximum capacity (255) for a single-byte Byte Count field.`
+      )
+    }
+
+    const totalLength = 5 + dataBytesLength
+
+    const buffer = new ArrayBuffer(totalLength)
+    const dataView = new DataView(buffer)
+    const uint8View = new Uint8Array(buffer)
+
+    let offset = 0
+
+    dataView.setUint16(offset, address, false)
+    offset += 2 // offset = 2
+
+    dataView.setUint16(offset, registerCount, false)
+    offset += 2 // offset = 4
+
+    uint8View[offset] = dataBytesLength
+    offset += 1 // offset = 5
+
+    for (const value of data) {
+      dataView.setInt16(offset, value, false)
+      offset += 2
+    }
+
+    return uint8View
   }
 
   private tryLogTraffic() {
@@ -122,7 +186,6 @@ export class ModbusClient {
       if (port) {
         const tx = port.lastRequestBuffer ?? port.lastRequest
         const rx = port.lastResponseBuffer ?? port.lastResponse
-
         if ((tx && tx.length > 0) || (rx && rx.length > 0)) {
           this.logger.pushTxRx(tx, rx)
         }

@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { ConnectionSettings, ModbusRawLog } from '../../../modbus/modbus'
 
-// --- Constants & Types ---
+// --- Constants ---
+const STORAGE_KEY = 'modbus_debugger_config_v17'
+
+const BAUD_RATES = [
+  110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 56000, 57600, 115200, 128000, 256000
+]
+
 const DEFAULT_SETTINGS: ConnectionSettings = {
   mode: 'RTU',
   slaveId: 1,
@@ -15,6 +21,7 @@ const DEFAULT_SETTINGS: ConnectionSettings = {
   stopBits: 1
 }
 
+// --- Types ---
 interface LogItem {
   id: number
   time: string
@@ -23,12 +30,47 @@ interface LogItem {
   detail?: string
 }
 
-type DataFormat = 'HEX' | 'DEC_U' | 'DEC_S' | 'ASCII' | 'FLOAT'
+type DataFormat = 'HEX' | 'DEC_U' | 'DEC_S' | 'UINT32' | 'ASCII' | 'FLOAT'
 type AddressFormat = 'HEX' | 'DEC'
+
+interface SavedConfig {
+  settings: ConnectionSettings
+  standardFc: string // Saved Standard Selection
+  customFcValue: string // Saved Custom Input
+  address: string
+  addrFormat: AddressFormat
+  countParam: string
+  dataFormat: DataFormat
+  customFcMode: boolean
+  showLogs: boolean // Save log visibility state
+}
 
 // --- Helpers ---
 
-const minDelay = async <T,>(promise: Promise<T>, ms = 300): Promise<T> => {
+const loadConfig = (): SavedConfig => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      return { ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } }
+    }
+  } catch (e) {
+    console.error(e)
+  }
+  return {
+    settings: DEFAULT_SETTINGS,
+    standardFc: '3',
+    customFcValue: '',
+    address: '0',
+    addrFormat: 'DEC',
+    countParam: '10',
+    dataFormat: 'DEC_U',
+    customFcMode: false,
+    showLogs: true
+  }
+}
+
+const minDelay = async <T,>(promise: Promise<T>, ms = 1000): Promise<T> => {
   const [res] = await Promise.all([promise, new Promise((r) => setTimeout(r, ms))])
   return res
 }
@@ -44,14 +86,20 @@ const buf2hex = (buf?: Uint8Array) =>
         .join(' ')
     : ''
 
-// --- Sub-Component: Register Block ---
+const parseFC = (input: string): number => {
+  const s = String(input).trim()
+  if (s.toLowerCase().startsWith('0x')) return parseInt(s, 16)
+  return parseInt(s, 10)
+}
+
+// --- Register Block ---
 interface RegisterBlockProps {
   address: number
   value: number
   nextValue?: number
   format: DataFormat
   addrFormat: AddressFormat
-  onWrite: (addr: number, val: number) => Promise<void>
+  onEdit: (addr: number, newVal: string) => void
 }
 
 const RegisterBlock: React.FC<RegisterBlockProps> = ({
@@ -60,11 +108,10 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
   nextValue,
   format,
   addrFormat,
-  onWrite
+  onEdit
 }) => {
   const [editingVal, setEditingVal] = useState<string>('')
   const [isEditing, setIsEditing] = useState(false)
-  const [loading, setLoading] = useState(false)
 
   const getDisplayValue = () => {
     switch (format) {
@@ -72,58 +119,76 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
         return `0x${value.toString(16).toUpperCase().padStart(4, '0')}`
       case 'DEC_S':
         return (value > 32767 ? value - 65536 : value).toString()
-      case 'ASCII':
+      case 'UINT32': {
+        const u32 = ((value << 16) | (nextValue || 0)) >>> 0
+        return u32.toString()
+      }
+
+      case 'FLOAT': {
+        const buf = new ArrayBuffer(4)
+        const view = new DataView(buf)
+        view.setUint16(0, value, false)
+        view.setUint16(2, nextValue || 0, false)
+        return view.getFloat32(0, false).toFixed(4)
+      }
+
+      case 'ASCII': {
         const hi = (value >> 8) & 0xff
         const lo = value & 0xff
         return (
           (hi > 31 && hi < 127 ? String.fromCharCode(hi) : '.') +
           (lo > 31 && lo < 127 ? String.fromCharCode(lo) : '.')
         )
-      case 'FLOAT':
-        const buf = new ArrayBuffer(4)
-        const view = new DataView(buf)
-        view.setUint16(0, value, false)
-        view.setUint16(2, nextValue || 0, false)
-        return view.getFloat32(0, false).toFixed(4)
+      }
+
       case 'DEC_U':
       default:
         return value.toString()
     }
   }
 
+  const isReadOnly = format === 'FLOAT' || format === 'UINT32' || format === 'ASCII'
+  const displayVal = isEditing ? editingVal : getDisplayValue()
+
   const handleFocus = () => {
-    if (format === 'FLOAT') return
+    if (isReadOnly) return
     setIsEditing(true)
-    setEditingVal(format === 'HEX' ? value.toString(16) : value.toString())
+    if (format === 'HEX' && !value.toString(16).startsWith('0x')) {
+      setEditingVal(`0x${value.toString(16).toUpperCase().padStart(4, '0')}`)
+    } else {
+      setEditingVal(value.toString())
+    }
   }
 
-  const handleKeyDown = async (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') await commitWrite()
-    if (e.key === 'Escape') setIsEditing(false)
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditingVal(e.target.value)
   }
 
-  const commitWrite = async () => {
-    setLoading(true)
-    try {
-      let num = 0
-      const s = editingVal.trim()
-      if (s.toLowerCase().startsWith('0x')) num = parseInt(s, 16)
-      else num = parseInt(s, 10)
-
-      await onWrite(address, num)
+  const handleBlur = () => {
+    if (isEditing) {
+      onEdit(address, editingVal)
       setIsEditing(false)
-    } catch (e) {
-      // Error handled by parent
-    } finally {
-      setLoading(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation()
+    if (e.key === 'Enter') {
+      e.preventDefault()(e.target as HTMLInputElement).blur()
+    }
+    if (e.key === 'Escape') {
+      setIsEditing(false)
     }
   }
 
   return (
     <div
+      onClick={() => {
+        if (!isEditing && !isReadOnly) handleFocus()
+      }}
       style={{
-        background: isEditing ? '#fff' : '#f4f4f5',
-        border: isEditing ? '1px solid #18181b' : '1px solid #e4e4e7',
+        background: isEditing ? '#fff' : '#f8f9fa',
+        border: isEditing ? '1px solid #2563eb' : '1px solid #e9ecef',
         borderRadius: '4px',
         padding: '4px 2px',
         display: 'flex',
@@ -131,43 +196,41 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
         alignItems: 'center',
         transition: 'all 0.1s',
         position: 'relative',
-        minWidth: '60px'
+        minWidth: '60px',
+        cursor: isReadOnly ? 'default' : 'text'
       }}
     >
       <div
         style={{
           fontSize: '10px',
-          color: '#a1a1aa',
+          color: '#adb5bd',
           marginBottom: '2px',
           fontFamily: 'monospace',
           userSelect: 'none'
         }}
       >
-        {format === 'FLOAT'
-          ? `${formatAddress(address, addrFormat)}.`
+        {isReadOnly
+          ? `${formatAddress(address, addrFormat)}..`
           : formatAddress(address, addrFormat)}
       </div>
-
       <input
-        value={isEditing ? editingVal : getDisplayValue()}
+        value={displayVal}
+        onChange={handleChange}
         onFocus={handleFocus}
-        onBlur={() => setIsEditing(false)}
-        onChange={(e) => setEditingVal(e.target.value)}
+        onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        readOnly={format === 'FLOAT'}
-        disabled={loading}
-        title={format === 'FLOAT' ? 'Float editing disabled' : 'Click to edit'}
+        readOnly={isReadOnly}
         style={{
           width: '100%',
           textAlign: 'center',
           border: 'none',
           background: 'transparent',
           fontWeight: 600,
-          color: isEditing ? '#000' : format === 'FLOAT' ? '#2563eb' : '#18181b',
+          color: isEditing ? '#000' : isReadOnly ? '#2563eb' : '#495057',
           outline: 'none',
           fontSize: '13px',
           fontFamily: 'monospace',
-          cursor: format === 'FLOAT' ? 'default' : 'text'
+          pointerEvents: isReadOnly ? 'none' : 'auto'
         }}
       />
     </div>
@@ -176,33 +239,63 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
 
 // --- Main Component ---
 const ModbusDebugger: React.FC = () => {
-  // Connection State
-  const [settings, setSettings] = useState<ConnectionSettings>(DEFAULT_SETTINGS)
+  const initialConfig = loadConfig()
+
+  const [settings, setSettings] = useState<ConnectionSettings>(initialConfig.settings)
   const [ports, setPorts] = useState<{ path: string }[]>([])
   const [connected, setConnected] = useState(false)
   const [sending, setSending] = useState(false)
 
-  // Command State
-  const [fc, setFc] = useState<number>(3)
-  const [address, setAddress] = useState<string>('0')
-  const [addrFormat, setAddrFormat] = useState<AddressFormat>('DEC')
-  const [valParam, setValParam] = useState<string>('10')
+  // FC State Separation
+  const [standardFc, setStandardFc] = useState<string>(initialConfig.standardFc || '3')
+  const [customFcValue, setCustomFcValue] = useState<string>(initialConfig.customFcValue || '')
+
+  const [customFcMode, setCustomFcMode] = useState(initialConfig.customFcMode)
+  const [address, setAddress] = useState<string>(initialConfig.address)
+  const [addrFormat, setAddrFormat] = useState<AddressFormat>(initialConfig.addrFormat)
+  const [countParam, setCountParam] = useState<string>(initialConfig.countParam)
   const [autoRead, setAutoRead] = useState(false)
 
-  // Monitor State
   const [monitorData, setMonitorData] = useState<{ startAddr: number; values: number[] } | null>(
     null
   )
-  const [dataFormat, setDataFormat] = useState<DataFormat>('DEC_U')
+  const [dataFormat, setDataFormat] = useState<DataFormat>(initialConfig.dataFormat)
 
-  // Log State
   const [logs, setLogs] = useState<LogItem[]>([])
-  const [showLogs, setShowLogs] = useState(false)
+  const [showLogs, setShowLogs] = useState(initialConfig.showLogs)
   const [devMode, setDevMode] = useState(false)
 
   const logListRef = useRef<HTMLDivElement>(null)
 
-  // --- Helpers ---
+  // Derived effective FC
+  const effectiveFc = customFcMode ? customFcValue : standardFc
+
+  // --- Auto Save ---
+  useEffect(() => {
+    const config: SavedConfig = {
+      settings,
+      standardFc,
+      customFcValue,
+      address,
+      addrFormat,
+      countParam,
+      dataFormat,
+      customFcMode,
+      showLogs
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+  }, [
+    settings,
+    standardFc,
+    customFcValue,
+    address,
+    addrFormat,
+    countParam,
+    dataFormat,
+    customFcMode,
+    showLogs
+  ])
+
   const addLog = (dir: 'TX' | 'RX' | 'SYS', msg: string, detail?: string) => {
     setLogs((prev) => [
       ...prev,
@@ -210,7 +303,6 @@ const ModbusDebugger: React.FC = () => {
     ])
   }
 
-  // --- Effects ---
   useEffect(() => {
     if (!window.modbusAPI) return addLog('SYS', 'Fatal: modbusAPI missing')
     const unsubscribe = window.modbusAPI.subscribeRawLog((log: ModbusRawLog) => {
@@ -218,8 +310,6 @@ const ModbusDebugger: React.FC = () => {
       if (log.tx) addLog('TX', `[${ts}] ${buf2hex(log.tx)}`)
       if (log.rx) addLog('RX', `[${ts}] ${buf2hex(log.rx)}`)
     })
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
     return () => window.modbusAPI.unsubscribeRawLog(unsubscribe)
   }, [])
 
@@ -227,27 +317,35 @@ const ModbusDebugger: React.FC = () => {
     if (settings.mode === 'RTU') scanPorts()
   }, [settings.mode])
 
+  // Scroll Logs (Only if showing)
   useEffect(() => {
-    if (showLogs && logListRef.current) {
-      const { current } = logListRef
-      current.scrollTop = current.scrollHeight
-    }
+    if (showLogs && logListRef.current)
+      logListRef.current.scrollTop = logListRef.current.scrollHeight
   }, [logs, showLogs])
 
-  // Auto Read Interval
+  // Define handleCommand here for useEffect dependency
+  const handleCommand = (silent = false) => {
+    const fcNum = parseFC(effectiveFc)
+    if ([1, 2, 3, 4].includes(fcNum)) {
+      handleRead(silent)
+    } else {
+      if (!silent) addLog('SYS', `Command FC:${fcNum} (Auto-read skip)`, undefined)
+    }
+  }
+
   useEffect(() => {
     let interval: NodeJS.Timeout
     if (autoRead && connected && !sending) {
       interval = setInterval(() => {
-        if (fc >= 1 && fc <= 4) {
+        const fcNum = parseFC(effectiveFc)
+        if (fcNum >= 1 && fcNum <= 4) {
           handleCommand(true)
         }
       }, 1000)
     }
     return () => clearInterval(interval)
-  }, [autoRead, connected, fc, address, valParam, addrFormat, settings, sending])
+  }, [autoRead, connected, effectiveFc, address, countParam, addrFormat, settings, sending])
 
-  // --- Handlers ---
   const scanPorts = async () => {
     try {
       const list = await window.modbusAPI.scanSerialPorts()
@@ -292,127 +390,183 @@ const ModbusDebugger: React.FC = () => {
     const val = parseInt(address, currentBase)
     const nextFmt = addrFormat === 'HEX' ? 'DEC' : 'HEX'
     setAddrFormat(nextFmt)
-
     if (isNaN(val)) setAddress('0')
     else setAddress(nextFmt === 'HEX' ? val.toString(16).toUpperCase() : val.toString(10))
   }
 
-  const handleCommand = async (silent = false) => {
+  const handleInputEnter = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (customFcMode) handleCommand(false)
+      else handleRead(false)
+    }
+  }
+
+  const handleCellEdit = (addr: number, newVal: string) => {
+    if (!monitorData) return
+    let num = NaN
+    const s = newVal.trim()
+    if (s.toLowerCase().startsWith('0x')) num = parseInt(s, 16)
+    else if (dataFormat === 'HEX' && /^[0-9A-Fa-f]+$/.test(s)) num = parseInt(s, 16)
+    else num = parseInt(s, 10)
+
+    if (!isNaN(num)) {
+      const index = addr - monitorData.startAddr
+      if (index >= 0 && index < monitorData.values.length) {
+        const newValues = [...monitorData.values]
+        newValues[index] = num
+        setMonitorData({ ...monitorData, values: newValues })
+      }
+    }
+  }
+
+  // --- 1. READ ACTION ---
+  const handleRead = async (silent = false) => {
     if (sending) return
 
     try {
       const base = addrFormat === 'HEX' ? 16 : 10
       const addrNum = parseInt(address, base)
+      let fcNum = parseFC(effectiveFc)
+      // Standard mode force Read FC
+      if (!customFcMode && ![1, 2, 3, 4].includes(fcNum)) fcNum = 3
+
+      const count = parseInt(countParam, 10) || 10
       if (isNaN(addrNum)) throw new Error('Invalid Address')
 
       if (!silent) setSending(true)
-
-      const isRead = [1, 2, 3, 4].includes(fc)
       const addrStr = formatAddress(addrNum, addrFormat)
 
       const execute = async () => {
-        if (isRead) {
-          const res = await window.modbusAPI.read({
-            functionCode: fc as any,
-            address: addrNum,
-            count: parseInt(valParam, 10) || 1
-          })
-          const numValues = res.map((v) => (typeof v === 'boolean' ? (v ? 1 : 0) : v))
-          setMonitorData({ startAddr: addrNum, values: numValues })
-          addLog(
-            'SYS',
-            `Read ${res.length} items from ${addrFormat === 'HEX' ? '0x' : ''}${addrStr}`
-          )
-        } else {
-          let values: any
-          const normalized = valParam.replace(/，/g, ',')
-          if (normalized.includes(',') || normalized.startsWith('[')) {
-            values = JSON.parse(normalized.startsWith('[') ? normalized : `[${normalized}]`)
-          } else {
-            values = Number(normalized)
-          }
-          await window.modbusAPI.write({
-            functionCode: fc as any,
-            address: addrNum,
-            values: values
-          })
-          addLog('SYS', `Write OK to ${addrFormat === 'HEX' ? '0x' : ''}${addrStr}`)
-
-          if (monitorData) {
-            const writeVals = Array.isArray(values) ? values : [values]
-            const start = monitorData.startAddr
-            const end = start + monitorData.values.length
-            if (addrNum >= start && addrNum < end) {
-              const newValues = [...monitorData.values]
-              writeVals.forEach((v: number, i: number) => {
-                const targetIdx = addrNum - start + i
-                if (targetIdx >= 0 && targetIdx < newValues.length) {
-                  newValues[targetIdx] = v
-                }
-              })
-              setMonitorData({ ...monitorData, values: newValues })
-            }
-          }
-        }
+        const res = await window.modbusAPI.read({
+          functionCode: fcNum as any,
+          address: addrNum,
+          count: count
+        })
+        const numValues = res.map((v) => (typeof v === 'boolean' ? (v ? 1 : 0) : v))
+        setMonitorData({ startAddr: addrNum, values: numValues })
+        if (!silent) addLog('SYS', `Read ${res.length} items from ${addrStr}`)
       }
 
-      if (!silent) {
-        await minDelay(execute())
-      } else {
-        await execute()
-      }
+      if (!silent) await minDelay(execute())
+      else await execute()
     } catch (e: any) {
-      addLog('SYS', 'Command Error', e.stack || e.message)
-      if (silent) setAutoRead(false) // Stop auto read on error
+      if (!silent) addLog('SYS', 'Read Error', e.stack || e.message)
+      if (silent) setAutoRead(false)
     } finally {
       if (!silent) setSending(false)
     }
   }
 
-  const handleCellWrite = async (targetAddr: number, val: number) => {
-    try {
-      setSending(true)
-      const writeFc = fc === 1 || fc === 2 ? 5 : 6
-      await minDelay(
-        window.modbusAPI.write({ functionCode: writeFc, address: targetAddr, values: val })
-      )
-      addLog('SYS', `Cell Write OK: ${formatAddress(targetAddr, addrFormat)} -> ${val}`)
+  // --- 2. WRITE ACTION ---
+  const handleWrite = async () => {
+    if (sending) return
 
-      if (monitorData) {
-        const index = targetAddr - monitorData.startAddr
-        if (index >= 0 && index < monitorData.values.length) {
-          const newValues = [...monitorData.values]
-          newValues[index] = val
-          setMonitorData({ ...monitorData, values: newValues })
+    try {
+      const base = addrFormat === 'HEX' ? 16 : 10
+      const startAddr = parseInt(address, base)
+      const count = parseInt(countParam, 10) || 1
+      const fcNum = parseFC(effectiveFc)
+
+      if (isNaN(startAddr)) throw new Error('Invalid Address')
+      if (!monitorData) throw new Error('No data. Please Read first.')
+
+      const valuesToWrite: number[] = []
+      for (let i = 0; i < count; i++) {
+        const target = startAddr + i
+        const idx = target - monitorData.startAddr
+        if (idx < 0 || idx >= monitorData.values.length) {
+          throw new Error(
+            `Data missing for ${formatAddress(target, addrFormat)}. Check Monitor range.`
+          )
+        }
+        valuesToWrite.push(monitorData.values[idx])
+      }
+
+      setSending(true)
+      const addrStr = formatAddress(startAddr, addrFormat)
+      const fcStr = `FC:${fcNum} (0x${fcNum.toString(16).toUpperCase()})`
+
+      const execute = async () => {
+        try {
+          let writeFC = fcNum
+          // Auto switch standard read FC to write FC
+          if (!customFcMode && [1, 2, 3, 4].includes(fcNum)) {
+            writeFC = count === 1 ? 6 : 16
+          }
+          const payload = count === 1 ? valuesToWrite[0] : valuesToWrite
+
+          await window.modbusAPI.write({
+            functionCode: writeFC as number,
+            address: startAddr,
+            values: payload
+          })
+          addLog('SYS', `${fcStr} Write OK to ${addrStr} (Len:${valuesToWrite.length})`)
+        } catch (err: any) {
+          addLog('SYS', `Write Warning: ${err.message}`)
+        }
+
+        // Auto Refresh
+        if (connected) {
+          try {
+            const readFc = fcNum === 5 || fcNum === 15 ? 1 : 3
+            const refreshRes = await window.modbusAPI.read({
+              functionCode: readFc as any,
+              address: startAddr,
+              count: count
+            })
+            const refreshValues = refreshRes.map((v) => (typeof v === 'boolean' ? (v ? 1 : 0) : v))
+            const newValues = [...monitorData.values]
+            refreshValues.forEach((val, i) => {
+              const idx = startAddr - monitorData.startAddr + i
+              if (idx >= 0 && idx < newValues.length) newValues[idx] = val
+            })
+            setMonitorData({ ...monitorData, values: newValues })
+          } catch (refreshErr) {}
         }
       }
+
+      await minDelay(execute())
     } catch (e: any) {
-      addLog('SYS', 'Cell Write Failed', e.message)
-      throw e
+      addLog('SYS', 'Write Error', e.message)
     } finally {
       setSending(false)
+    }
+  }
+
+  // --- Main Button Logic ---
+  const handleMainAction = () => {
+    const fcNum = parseFC(effectiveFc)
+    if (!customFcMode) {
+      if ([6, 16].includes(fcNum)) handleWrite()
+      else handleRead(false)
+    } else {
+      if ([1, 2, 3, 4].includes(fcNum)) handleRead(false)
+      else handleWrite()
     }
   }
 
   const preventEnter = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') e.preventDefault()
   }
-
   const updateInfo = (k: keyof ConnectionSettings, v: any) => setSettings((p) => ({ ...p, [k]: v }))
+
+  const currentFC = parseFC(effectiveFc)
+  const isReadOp = [1, 2, 3, 4].includes(currentFC)
+  const isWriteAction = !customFcMode ? [6, 16].includes(currentFC) : !isReadOp
+  const isFloatMode = dataFormat === 'FLOAT' || dataFormat === 'UINT32'
 
   // --- Styles ---
   const containerStyle: React.CSSProperties = {
+    height: '100%',
     width: '100%',
-    padding: '24px',
+    padding: '20px',
     boxSizing: 'border-box',
     background: '#fff',
     display: 'flex',
     flexDirection: 'column',
-    gap: '20px',
-    maxWidth: '100%',
-    margin: '0 auto'
+    gap: '16px'
   }
-
   const inputBase = {
     padding: '0 10px',
     height: '36px',
@@ -427,33 +581,27 @@ const ModbusDebugger: React.FC = () => {
   const labelStyle = {
     fontSize: '12px',
     fontWeight: 600,
-    color: '#18181b',
+    color: '#495057',
     marginBottom: '6px',
     display: 'block'
   }
-  const selectStyle = {
-    ...inputBase,
-    appearance: 'none' as const,
-    backgroundImage:
-      'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2318181b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
-    backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'right 10px center',
-    backgroundSize: '8px',
-    paddingRight: '24px'
+  const rowStyle = {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'flex-end',
+    flexWrap: 'wrap' as const
   }
-
-  // Responsive flex items
-  const flexItemSmall = { flex: '0 0 auto', minWidth: '80px' }
-  const flexItemGrow = { flex: '1 1 auto', minWidth: '140px' }
+  const flexFixed = (w: string) => ({ flex: `0 0 ${w}` })
+  const flexGrow = { flex: '1 1 120px' }
 
   return (
     <div style={containerStyle}>
       {/* 1. Connection Section */}
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={flexItemSmall}>
+      <div style={rowStyle}>
+        <div style={flexFixed('90px')}>
           <span style={labelStyle}>Mode</span>
           <select
-            style={{ ...selectStyle, width: '100%' }}
+            style={{ ...inputBase, width: '100%', padding: '0 8px' }}
             value={settings.mode}
             onChange={(e) => updateInfo('mode', e.target.value)}
           >
@@ -462,10 +610,10 @@ const ModbusDebugger: React.FC = () => {
           </select>
         </div>
 
-        <div style={flexItemSmall}>
+        <div style={flexFixed('80px')}>
           <span style={labelStyle}>Slave ID</span>
           <input
-            style={{ ...inputBase, width: '70px' }}
+            style={{ ...inputBase, width: '100%', padding: '0 10px' }}
             type="number"
             value={settings.slaveId}
             onChange={(e) => updateInfo('slaveId', parseInt(e.target.value))}
@@ -473,13 +621,13 @@ const ModbusDebugger: React.FC = () => {
           />
         </div>
 
-        <div style={{ flex: 1, minWidth: '280px' }}>
+        <div style={{ flex: '1 1 300px' }}>
           {settings.mode === 'RTU' ? (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={labelStyle}>Serial Port & Baud</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <select
-                  style={{ ...selectStyle, flex: 1, minWidth: '150px' }}
+                  style={{ ...inputBase, flex: 1, minWidth: '150px', padding: '0 8px' }}
                   value={settings.serialPort}
                   onChange={(e) => updateInfo('serialPort', e.target.value)}
                 >
@@ -489,26 +637,25 @@ const ModbusDebugger: React.FC = () => {
                     </option>
                   ))}
                 </select>
-
                 <button
                   onClick={scanPorts}
                   style={{
                     ...inputBase,
+                    width: '36px',
                     cursor: 'pointer',
-                    background: '#f4f4f5',
-                    flex: '0 0 auto'
+                    background: '#f8f9fa',
+                    padding: 0
                   }}
                   title="Refresh Ports"
                 >
                   ↻
                 </button>
-
                 <select
-                  style={{ ...selectStyle, width: '100px', flex: '0 0 auto' }}
+                  style={{ ...inputBase, width: '100px', flex: '0 0 auto', padding: '0 8px' }}
                   value={settings.baudRate}
                   onChange={(e) => updateInfo('baudRate', parseInt(e.target.value))}
                 >
-                  {[9600, 19200, 38400, 115200].map((b) => (
+                  {BAUD_RATES.map((b) => (
                     <option key={b} value={b}>
                       {b}
                     </option>
@@ -521,14 +668,14 @@ const ModbusDebugger: React.FC = () => {
               <span style={labelStyle}>IP Address & Port</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
-                  style={{ ...inputBase, flex: 1, minWidth: '150px' }}
+                  style={{ ...inputBase, flex: 1, minWidth: '150px', padding: '0 10px' }}
                   placeholder="127.0.0.1"
                   value={settings.ipAddress}
                   onChange={(e) => updateInfo('ipAddress', e.target.value)}
                   onKeyDown={preventEnter}
                 />
                 <input
-                  style={{ ...inputBase, width: '70px', flex: '0 0 auto' }}
+                  style={{ ...inputBase, width: '80px', padding: '0 10px' }}
                   type="number"
                   value={settings.port}
                   onChange={(e) => updateInfo('port', parseInt(e.target.value))}
@@ -543,21 +690,14 @@ const ModbusDebugger: React.FC = () => {
           onClick={handleConnect}
           disabled={sending}
           style={{
-            height: '36px',
-            width: '140px', // Fixed width to prevent layout shift
-            borderRadius: '6px',
+            ...inputBase,
+            width: '140px',
             fontWeight: 600,
-            fontSize: '13px',
-            border: 'none',
             cursor: sending ? 'wait' : 'pointer',
             background: connected ? '#ef4444' : '#18181b',
             color: '#fff',
-            opacity: sending ? 0.7 : 1,
-            transition: 'background 0.2s',
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            border: 'none',
+            opacity: sending ? 0.7 : 1
           }}
         >
           {sending ? '...' : connected ? 'Disconnect' : 'Connect'}
@@ -565,23 +705,69 @@ const ModbusDebugger: React.FC = () => {
       </div>
 
       {/* 2. Command Section */}
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={flexItemGrow}>
+      <div style={rowStyle}>
+        {/* Function Code */}
+        <div style={flexFixed('220px')}>
           <span style={labelStyle}>Function</span>
-          <select
-            style={{ ...selectStyle, width: '100%' }}
-            value={fc}
-            onChange={(e) => setFc(parseInt(e.target.value))}
-          >
-            <option value={3}>03 Read Holding</option>
-            <option value={4}>04 Read Input</option>
-            <option value={1}>01 Read Coils</option>
-            <option value={6}>06 Write Single</option>
-            <option value={16}>16 Write Multi</option>
-          </select>
+          <div style={{ display: 'flex' }}>
+            {customFcMode ? (
+              <input
+                style={{
+                  ...inputBase,
+                  width: '150px',
+                  borderTopRightRadius: 0,
+                  borderBottomRightRadius: 0,
+                  borderRight: 'none',
+                  padding: '0 10px'
+                }}
+                type="text"
+                value={customFcValue}
+                onChange={(e) => setCustomFcValue(e.target.value)}
+                onKeyDown={handleInputEnter}
+                placeholder="FC (e.g. 0x06)"
+              />
+            ) : (
+              <select
+                style={{
+                  ...inputBase,
+                  width: '150px',
+                  borderTopRightRadius: 0,
+                  borderBottomRightRadius: 0,
+                  borderRight: 'none',
+                  padding: '0 8px'
+                }}
+                value={standardFc}
+                onChange={(e) => setStandardFc(e.target.value)}
+              >
+                <option value="3">03 Read Holding</option>
+                <option value="4">04 Read Input</option>
+                <option value="1">01 Read Coils</option>
+                <option value="6">06 Write Single</option>
+                <option value="16">16 Write Multi</option>
+              </select>
+            )}
+            <button
+              onClick={() => setCustomFcMode(!customFcMode)}
+              style={{
+                ...inputBase,
+                width: '70px',
+                borderTopLeftRadius: 0,
+                borderBottomLeftRadius: 0,
+                background: '#f8f9fa',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#495057',
+                padding: 0
+              }}
+            >
+              {customFcMode ? 'Custom' : 'Standard'}
+            </button>
+          </div>
         </div>
 
-        <div style={flexItemGrow}>
+        {/* Address */}
+        <div style={flexGrow}>
           <span style={labelStyle}>Address ({addrFormat})</span>
           <div style={{ display: 'flex' }}>
             <input
@@ -591,27 +777,27 @@ const ModbusDebugger: React.FC = () => {
                 borderTopRightRadius: 0,
                 borderBottomRightRadius: 0,
                 borderRight: 'none',
-                fontFamily: 'monospace'
+                fontFamily: 'monospace',
+                padding: '0 10px'
               }}
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              onKeyDown={preventEnter}
+              onKeyDown={handleInputEnter}
               placeholder={addrFormat === 'HEX' ? 'F040' : '0'}
             />
             <button
               onClick={toggleAddrFormat}
-              title="Toggle Hex/Dec"
               style={{
                 ...inputBase,
                 width: '50px',
                 borderTopLeftRadius: 0,
                 borderBottomLeftRadius: 0,
-                background: '#f4f4f5',
+                background: '#f8f9fa',
                 cursor: 'pointer',
                 fontSize: '11px',
                 fontWeight: 600,
-                color: '#71717a',
-                flexShrink: 0
+                color: '#495057',
+                padding: 0
               }}
             >
               {addrFormat}
@@ -619,32 +805,33 @@ const ModbusDebugger: React.FC = () => {
           </div>
         </div>
 
-        <div style={flexItemGrow}>
-          <span style={labelStyle}>Count / Value</span>
+        {/* Count */}
+        <div style={flexFixed('100px')}>
+          <span style={labelStyle}>Count</span>
           <input
-            style={{ ...inputBase, width: '100%', fontFamily: 'monospace' }}
-            value={valParam}
-            onChange={(e) => setValParam(e.target.value)}
-            onKeyDown={preventEnter}
-            placeholder="10 or [1,2]"
+            style={{ ...inputBase, width: '100%', fontFamily: 'monospace', padding: '0 10px' }}
+            value={countParam}
+            onChange={(e) => setCountParam(e.target.value)}
+            onKeyDown={handleInputEnter}
+            placeholder="10"
           />
         </div>
 
+        {/* Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {fc < 5 && (
+          {!isWriteAction && (
             <button
               onClick={() => setAutoRead(!autoRead)}
               disabled={!connected}
               style={{
                 ...inputBase,
-                width: '80px', // Fixed width
-                background: autoRead ? '#10b981' : '#f4f4f5',
-                color: autoRead ? '#fff' : '#18181b',
+                width: '80px',
                 fontWeight: 600,
-                cursor: !connected ? 'not-allowed' : 'pointer',
                 border: 'none',
-                opacity: !connected ? 0.5 : 1,
-                flexShrink: 0
+                cursor: !connected ? 'not-allowed' : 'pointer',
+                background: autoRead ? '#10b981' : '#f8f9fa',
+                color: autoRead ? '#fff' : '#18181b',
+                opacity: !connected ? 0.5 : 1
               }}
             >
               {autoRead ? 'Stop' : 'Auto'}
@@ -652,40 +839,38 @@ const ModbusDebugger: React.FC = () => {
           )}
 
           <button
-            onClick={() => handleCommand(false)}
-            disabled={!connected || sending}
+            onClick={handleMainAction}
+            disabled={!connected || sending || (isWriteAction && isFloatMode)}
             style={{
-              height: '36px',
-              width: '100px', // Fixed width to prevent layout shift
-              borderRadius: '6px',
+              ...inputBase,
+              width: '100px',
               fontWeight: 600,
-              fontSize: '13px',
               border: 'none',
-              cursor: !connected || sending ? 'not-allowed' : 'pointer',
-              background: '#2563eb',
+              cursor:
+                !connected || sending || (isWriteAction && isFloatMode) ? 'not-allowed' : 'pointer',
+              background: isWriteAction ? '#d97706' : '#2563eb',
               color: '#fff',
-              opacity: !connected || sending ? 0.5 : 1,
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
+              opacity: !connected || sending || (isWriteAction && isFloatMode) ? 0.5 : 1
             }}
           >
-            {sending ? '...' : fc < 5 ? 'Read' : 'Write'}
+            {sending ? '...' : isWriteAction ? 'Write' : 'Read'}
           </button>
         </div>
       </div>
 
-      {/* 3. Data Monitor */}
+      {/* 3. Data Monitor (Flex Grow) */}
       <div
         style={{
-          flex: 1,
+          // Data Monitor 占 2 份，或占满剩余所有空间
+          flex: showLogs ? 2 : 1,
+          transition: 'flex 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           display: 'flex',
           flexDirection: 'column',
-          minHeight: '300px',
+          minHeight: '0',
           border: '1px solid #e4e4e7',
           borderRadius: '8px',
-          background: '#fafafa'
+          background: '#fafafa',
+          overflow: 'hidden'
         }}
       >
         <div
@@ -700,7 +885,7 @@ const ModbusDebugger: React.FC = () => {
         >
           <span style={{ fontWeight: 600, fontSize: '13px', color: '#18181b' }}>Data Monitor</span>
           <div style={{ display: 'flex', gap: '4px' }}>
-            {(['DEC_U', 'DEC_S', 'HEX', 'FLOAT', 'ASCII'] as DataFormat[]).map((f) => (
+            {(['DEC_U', 'DEC_S', 'UINT32', 'HEX', 'FLOAT', 'ASCII'] as DataFormat[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setDataFormat(f)}
@@ -720,7 +905,6 @@ const ModbusDebugger: React.FC = () => {
             ))}
           </div>
         </div>
-
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
           {!monitorData ? (
             <div
@@ -744,34 +928,37 @@ const ModbusDebugger: React.FC = () => {
                 gap: '8px'
               }}
             >
-              {monitorData.values.map((val, idx) => (
-                <RegisterBlock
-                  key={monitorData.startAddr + idx}
-                  address={monitorData.startAddr + idx}
-                  value={val}
-                  nextValue={monitorData.values[idx + 1]}
-                  format={dataFormat}
-                  addrFormat={addrFormat}
-                  onWrite={handleCellWrite}
-                />
-              ))}
+              {monitorData.values.map((val, idx) => {
+                const currentAddr = monitorData.startAddr + idx
+                return (
+                  <RegisterBlock
+                    key={currentAddr}
+                    address={currentAddr}
+                    value={val}
+                    nextValue={monitorData.values[idx + 1]}
+                    format={dataFormat}
+                    addrFormat={addrFormat}
+                    onEdit={handleCellEdit}
+                  />
+                )
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* 4. Log Monitor */}
+      {/* 4. Log Monitor (Collapsible/Resizable Logic) */}
       <div
         style={{
-          height: showLogs ? '250px' : '32px',
-          transition: 'height 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          // Log Monitor 占 1 份，或固定高度 32px
+          flex: showLogs ? 1 : '0 0 32px',
+          transition: 'flex 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           border: '1px solid #e4e4e7',
           borderRadius: '8px',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          background: '#fff',
-          flexShrink: 0
+          background: '#fff'
         }}
       >
         <div
@@ -844,7 +1031,6 @@ const ModbusDebugger: React.FC = () => {
             <span style={{ color: '#a1a1aa', fontSize: '10px' }}>{showLogs ? '▼' : '▲'}</span>
           </div>
         </div>
-
         <div
           ref={logListRef}
           style={{
