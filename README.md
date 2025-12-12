@@ -4,9 +4,10 @@ LAModbus is a cross-platform desktop application framework built with Electron, 
 
 This project is suitable for creating tools such as Modbus TCP/RTU configuration apps, device dashboards, analysis utilities, or general desktop applications based on Electron.
 
-------------------------------------------------------------
-Features
-------------------------------------------------------------
+---
+
+## Features
+
 - Electron + React integration for building modern desktop apps
 - Fully typed codebase powered by TypeScript
 - Cross-platform support for Windows, macOS, and Linux
@@ -15,38 +16,42 @@ Features
 
 Future extensions may include Modbus RTU/TCP functionality, data visualization modules, device management logic, and more.
 
-------------------------------------------------------------
-Installation and Development
-------------------------------------------------------------
+---
+
+## Installation and Development
+
 Requirements:
+
 - Node.js (recommended: latest LTS)
 - pnpm (recommended)
 
 Install dependencies:
-    pnpm install
+pnpm install
 
 Start development mode:
-    pnpm dev
+pnpm dev
 
-------------------------------------------------------------
-Build and Packaging
-------------------------------------------------------------
+---
+
+## Build and Packaging
+
 To build for specific platforms, use:
 
 Windows:
-    pnpm build:win
+pnpm build:win
 
 macOS:
-    pnpm build:mac
+pnpm build:mac
 
 Linux:
-    pnpm build:linux
+pnpm build:linux
 
 Packaged application outputs will be placed in the corresponding dist or release folder.
 
-------------------------------------------------------------
-Project Structure
-------------------------------------------------------------
+---
+
+## Project Structure
+
 ```
 .
 ├── .github/               GitHub Actions workflows
@@ -60,12 +65,14 @@ Project Structure
 └── README.md              Project documentation
 ```
 
-------------------------------------------------------------
-Contribution
-------------------------------------------------------------
+---
+
+## Contribution
+
 Pull requests and issues are welcome. Contributions of any kind that improve the project’s structure, documentation, or features are appreciated.
 
-------------------------------------------------------------
-License
-------------------------------------------------------------
+---
+
+## License
+
 This project is released under the MIT License. See the LICENSE file for details.

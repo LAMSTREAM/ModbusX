@@ -35,14 +35,14 @@ type AddressFormat = 'HEX' | 'DEC'
 
 interface SavedConfig {
   settings: ConnectionSettings
-  standardFc: string // Saved Standard Selection
-  customFcValue: string // Saved Custom Input
+  standardFc: string
+  customFcValue: string
   address: string
   addrFormat: AddressFormat
   countParam: string
   dataFormat: DataFormat
   customFcMode: boolean
-  showLogs: boolean // Save log visibility state
+  showLogs: boolean
 }
 
 // --- Helpers ---
@@ -174,7 +174,7 @@ const RegisterBlock: React.FC<RegisterBlockProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation()
     if (e.key === 'Enter') {
-      e.preventDefault()(e.target as HTMLInputElement).blur()
+      ;(e.target as HTMLInputElement).blur()
     }
     if (e.key === 'Escape') {
       setIsEditing(false)
@@ -339,9 +339,9 @@ const ModbusDebugger: React.FC = () => {
       interval = setInterval(() => {
         const fcNum = parseFC(effectiveFc)
         if (fcNum >= 1 && fcNum <= 4) {
-          handleCommand(true)
+          handleCommand(false)
         }
-      }, 1000)
+      }, 2000)
     }
     return () => clearInterval(interval)
   }, [autoRead, connected, effectiveFc, address, countParam, addrFormat, settings, sending])
@@ -451,8 +451,7 @@ const ModbusDebugger: React.FC = () => {
       if (!silent) await minDelay(execute())
       else await execute()
     } catch (e: any) {
-      if (!silent) addLog('SYS', 'Read Error', e.stack || e.message)
-      if (silent) setAutoRead(false)
+      addLog('SYS', 'Read Error', e.stack || e.message)
     } finally {
       if (!silent) setSending(false)
     }
@@ -861,7 +860,6 @@ const ModbusDebugger: React.FC = () => {
       {/* 3. Data Monitor (Flex Grow) */}
       <div
         style={{
-          // Data Monitor 占 2 份，或占满剩余所有空间
           flex: showLogs ? 2 : 1,
           transition: 'flex 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           display: 'flex',
@@ -929,6 +927,9 @@ const ModbusDebugger: React.FC = () => {
               }}
             >
               {monitorData.values.map((val, idx) => {
+                const is32Bit = dataFormat === 'FLOAT' || dataFormat === 'UINT32'
+                if (is32Bit && idx % 2 !== 0) return null
+
                 const currentAddr = monitorData.startAddr + idx
                 return (
                   <RegisterBlock
@@ -947,10 +948,9 @@ const ModbusDebugger: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Log Monitor (Collapsible/Resizable Logic) */}
+      {/* 4. Log Monitor */}
       <div
         style={{
-          // Log Monitor 占 1 份，或固定高度 32px
           flex: showLogs ? 1 : '0 0 32px',
           transition: 'flex 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           border: '1px solid #e4e4e7',

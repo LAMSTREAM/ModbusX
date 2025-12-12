@@ -8,6 +8,7 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     minWidth: 900,
     minHeight: 670,
+    title: 'LAModbus',
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -73,13 +74,5 @@ app.on('window-all-closed', () => {
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
 
-// Load modbus IPC. In dev we rely on Vite path alias to load TS source;
-// in production load compiled JS from the `out` folder.
-if (is.dev) {
-  // Use a relative import in dev so the main process can resolve the TS source
-  // without relying on the `src/` path alias. This keeps dev and prod paths
-  // consistent and avoids Rollup externalization issues.
-  void import('../modbus/modbus-ipc')
-} else {
-  void import('../modbus/modbus-ipc')
-}
+// Import Modbus IPC
+void import('../modbus/modbus-ipc')
