@@ -32,7 +32,7 @@ export class ModbusClient {
         await newClient.connectTCP(options.ipAddress, { port: options.port || 502 })
       } else {
         if (!options.serialPort) throw new Error('RTU mode requires serialPort')
-        await newClient.connectRTU(options.serialPort, {
+        await newClient.connectRTUBuffered(options.serialPort, {
           baudRate: options.baudRate || 9600,
           dataBits: options.dataBits || 8,
           parity: options.parity || 'none',
@@ -42,6 +42,8 @@ export class ModbusClient {
 
       newClient.setID(options.slaveId || 1)
       this.client = newClient
+
+      this.setupTrafficMonitor(newClient)
     } catch (err: any) {
       newClient.close(() => {})
       this.client = null
@@ -83,7 +85,7 @@ export class ModbusClient {
       }
       return result
     } finally {
-      this.tryLogTraffic()
+      //
     }
   }
 
@@ -134,7 +136,7 @@ export class ModbusClient {
         }
       }
     } finally {
-      this.tryLogTraffic()
+      //
     }
   }
 
@@ -177,21 +179,27 @@ export class ModbusClient {
     return uint8View
   }
 
-  private tryLogTraffic() {
+  private setupTrafficMonitor(client: ModbusRTU) {
     try {
-      if (!this.client) return
-      const clientAny = this.client as any
-      const port = clientAny._port || clientAny._client || clientAny._netSocket
+      const clientAny = client as any
 
-      if (port) {
-        const tx = port.lastRequestBuffer ?? port.lastRequest
-        const rx = port.lastResponseBuffer ?? port.lastResponse
-        if ((tx && tx.length > 0) || (rx && rx.length > 0)) {
-          this.logger.pushTxRx(tx, rx)
+      const stream = clientAny._port?._client || clientAny._netSocket
+
+      if (stream) {
+        // RX
+        stream.on('data', (chunk: Buffer) => {
+          this.logger.pushTxRx(undefined, chunk)
+        })
+
+        // TX (Monkey Patch write)
+        const originalWrite = stream.write
+        stream.write = (chunk: any, ...args: any[]) => {
+          this.logger.pushTxRx(chunk, undefined)
+          return originalWrite.call(stream, chunk, ...args)
         }
       }
     } catch (e) {
-      console.warn('Log capture failed', e)
+      console.warn('Traffic monitor setup failed:', e)
     }
   }
 }
