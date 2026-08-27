@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: LAModbus
+productName: ModbusX
 directories:
   buildResources: build
 files:
@@ -9,10 +9,8 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-asarUnpack:
-  - resources/**
 win:
-  executableName: LAModbus
+  executableName: ModbusX
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -39,7 +37,10 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  # The "generic" provider is download-only: app-builder-lib's createPublisher
+  # returns null for it, so `--publish always` silently uploaded nothing and the
+  # GitHub release came out empty. owner/repo are intentionally omitted so they
+  # resolve from .git/config and survive a repository rename.
+  provider: github
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

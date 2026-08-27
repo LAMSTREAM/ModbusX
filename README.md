@@ -1,6 +1,6 @@
-# LAModbus
+# ModbusX
 
-LAModbus is a cross-platform desktop application framework built with Electron, React, and TypeScript. It is designed to help developers quickly create applications related to Modbus communication, device monitoring, or data visualization. The current repository provides a clean and extendable structure with preconfigured development and build workflows.
+ModbusX is a cross-platform desktop application framework built with Electron, React, and TypeScript. It is designed to help developers quickly create applications related to Modbus communication, device monitoring, or data visualization. The current repository provides a clean and extendable structure with preconfigured development and build workflows.
 
 This project is suitable for creating tools such as Modbus TCP/RTU configuration apps, device dashboards, analysis utilities, or general desktop applications based on Electron.
 
@@ -57,7 +57,6 @@ Packaged application outputs will be placed in the corresponding dist or release
 ├── .github/               GitHub Actions workflows
 ├── .vscode/               Editor configuration
 ├── build/                 Build configuration files
-├── resources/             Application resources
 ├── src/                   Source code (Electron + React)
 ├── package.json           Project configuration
 ├── tsconfig.json          TypeScript configuration
