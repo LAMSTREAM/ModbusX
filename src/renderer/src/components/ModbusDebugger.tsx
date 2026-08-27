@@ -1,24 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { ConnectionSettings, ModbusRawLog } from '../../../modbus/modbus'
 
-// --- TypeScript Declaration for Window ---
-declare global {
-  interface Window {
-    modbusAPI: {
-      connect: (settings: ConnectionSettings) => Promise<void>
-      disconnect: () => Promise<void>
-      scanSerialPorts: () => Promise<{ path: string }[]>
-      read: (params: { functionCode: number; address: number; count: number }) => Promise<any[]>
-      write: (params: {
-        functionCode: number
-        address: number
-        values: number | number[]
-      }) => Promise<void>
-      subscribeRawLog: (cb: (log: ModbusRawLog) => void) => () => void
-      unsubscribeRawLog: (cb: any) => void
-    }
-  }
-}
+// `window.modbusAPI` is declared once, globally, in modbus.d.ts as `IModbusAPI`.
+// Re-declaring a structurally different shape here made the two augmentations
+// disagree (TS2717) and collapsed `subscribeRawLog` to `never` at its call site.
 
 // --- Constants ---
 const STORAGE_KEY = 'modbus_debugger_config'
@@ -333,6 +318,9 @@ const ModbusDebugger: React.FC = () => {
   const [showRawLog, setShowRawLog] = useState(initialConfig.showRawLog)
   const showRawLogRef = useRef(initialConfig.showRawLog)
   const logListRef = useRef<HTMLDivElement>(null)
+  // `sending` is read from inside interval/async closures, where the state
+  // value is stale. The ref is the authoritative busy flag.
+  const busyRef = useRef(false)
 
   const effectiveFc = customFcMode ? customFcValue : standardFc
 
@@ -423,14 +411,19 @@ const ModbusDebugger: React.FC = () => {
   // Auto Read Interval
   useEffect(() => {
     let interval: NodeJS.Timeout
-    if (autoRead && connected && !sending) {
+    if (autoRead && connected) {
       interval = setInterval(() => {
+        // Skip this tick rather than stacking a request on top of an in-flight
+        // one — overlapping requests on one client time each other out.
+        if (busyRef.current) return
         const fcNum = parseFC(effectiveFc)
         if (fcNum >= 1 && fcNum <= 4) handleCommand(false)
       }, 2000)
     }
     return () => clearInterval(interval)
-  }, [autoRead, connected, effectiveFc, address, countParam, addrFormat, settings, sending])
+    // `sending` is deliberately not a dependency: it would tear down and
+    // recreate the interval on every request. `busyRef` is checked per tick.
+  }, [autoRead, connected, effectiveFc, address, countParam, addrFormat, settings])
 
   // --- GRID CALLBACKS ---
   const handleSelectionStart = useCallback((idx: number) => {
@@ -527,6 +520,8 @@ const ModbusDebugger: React.FC = () => {
   }
 
   const handleConnect = async () => {
+    if (busyRef.current) return
+    busyRef.current = true
     setSending(true)
     try {
       if (connected) {
@@ -544,12 +539,14 @@ const ModbusDebugger: React.FC = () => {
       setConnected(false)
       addLog('SYS', 'Connection Error', e.message)
     } finally {
+      busyRef.current = false
       setSending(false)
     }
   }
 
   const handleRead = async (silent = false) => {
-    if (sending) return
+    if (busyRef.current) return
+    busyRef.current = true
     try {
       const base = addrFormat === 'HEX' ? 16 : 10
       const addrNum = parseInt(address, base)
@@ -575,12 +572,14 @@ const ModbusDebugger: React.FC = () => {
     } catch (e: any) {
       addLog('SYS', 'Read Error', e.message)
     } finally {
+      busyRef.current = false
       if (!silent) setSending(false)
     }
   }
 
   const handleWrite = async () => {
-    if (sending || !monitorData) return
+    if (busyRef.current || !monitorData) return
+    busyRef.current = true
     try {
       const base = addrFormat === 'HEX' ? 16 : 10
       const startAddr = parseInt(address, base)
@@ -630,6 +629,7 @@ const ModbusDebugger: React.FC = () => {
     } catch (e: any) {
       addLog('SYS', 'Write Error', e.message)
     } finally {
+      busyRef.current = false
       setSending(false)
     }
   }

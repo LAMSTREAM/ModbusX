@@ -18,7 +18,8 @@ export interface ConnectionSettings {
 }
 
 export interface ModbusReadParams {
-  functionCode: 0x01 | 0x02 | 0x03 | 0x04
+  /** 0x01-0x04 use modbus-serial; any other code is read as a custom FC. */
+  functionCode: 0x01 | 0x02 | 0x03 | 0x04 | number
   address: number
   count: number
 }
@@ -45,7 +46,6 @@ export interface IModbusAPI {
   write: (params: ModbusWriteParams) => Promise<void>
   scanSerialPorts: () => Promise<{ path: string; manufacturer?: string }[]>
 
-  subscribeRawLog: (callback: (log: ModbusRawLog) => void) => void
   subscribeRawLog: (callback: (log: ModbusRawLog) => void) => () => void
   unsubscribeRawLog: (unsubscribe: () => void) => void
 }
