@@ -39,10 +39,6 @@ jobs:
       - name: Typecheck & Build
         run: pnpm run build
 
-      # Not a gate yet: there are pre-existing lint errors (mostly
-      # no-explicit-any and react/prop-types in ModbusDebugger.tsx). Surfaced
-      # here so the count is visible and can be driven down, then promoted to a
-      # blocking step.
-      - name: Lint (non-blocking)
-        continue-on-error: true
+      # A real gate: the tree is lint-clean, so any new finding fails the job.
+      - name: Lint
         run: pnpm run lint

@@ -1,5 +1,5 @@
 // modbus-handler.ts
-import { ipcRenderer } from 'electron'
+import { ipcRenderer, IpcRendererEvent } from 'electron'
 import {
   IModbusAPI,
   ModbusReadParams,
@@ -17,7 +17,7 @@ export const modbusHandler: IModbusAPI = {
   scanSerialPorts: () => ipcRenderer.invoke('modbus-list-ports'),
 
   subscribeRawLog: (callback) => {
-    const handler = (_: any, data: ModbusRawLog) => callback(data)
+    const handler = (_: IpcRendererEvent, data: ModbusRawLog) => callback(data)
     ipcRenderer.on('modbus-raw-log', handler)
     const unsubscribe = () => ipcRenderer.removeListener('modbus-raw-log', handler)
     return unsubscribe
@@ -25,7 +25,7 @@ export const modbusHandler: IModbusAPI = {
 
   unsubscribeRawLog: (unsubscribe) => {
     if (typeof unsubscribe === 'function') {
-      ;(unsubscribe as any)()
+      unsubscribe()
     }
   }
 }

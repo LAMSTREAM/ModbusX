@@ -13,7 +13,7 @@ ipcMain.handle('modbus-connect', async (event, options: ConnectionSettings) => {
   return true
 })
 
-ipcMain.handle('modbus-disconnect', async (event) => {
+ipcMain.handle('modbus-disconnect', async () => {
   // Must be awaited: resolving before the port is closed lets an immediate
   // reconnect race the teardown, which wedges a serial port with
   // "Access denied" for the remaining lifetime of the process.

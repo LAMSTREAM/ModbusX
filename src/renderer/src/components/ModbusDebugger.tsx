@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
-import { ConnectionSettings, ModbusRawLog } from '../../../modbus/modbus'
+import { ConnectionSettings, ModbusMode, ModbusRawLog } from '../../../modbus/modbus'
+import ThemeToggle from './ThemeToggle'
+import { useTheme } from '../hooks/useTheme'
 
 // `window.modbusAPI` is declared once, globally, in modbus.d.ts as `IModbusAPI`.
 // Re-declaring a structurally different shape here made the two augmentations
@@ -86,23 +88,25 @@ const formatAddress = (addr: number, fmt: AddressFormat) => {
   return fmt === 'HEX' ? `${addr.toString(16).toUpperCase().padStart(4, '0')}` : addr.toString()
 }
 
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
 // Robust Buffer Handling: Handles Uint8Array, Array, and Electron IPC Buffer objects
-const buf2hex = (input: any) => {
+const buf2hex = (input: unknown) => {
   if (!input) return ''
 
   let arr: Iterable<number> | ArrayLike<number> = []
 
   if (input instanceof Uint8Array || Array.isArray(input)) {
-    arr = input
-  } else if (input.type === 'Buffer' && Array.isArray(input.data)) {
-    // Electron IPC serialized Buffer
-    arr = input.data
-  } else if (input.data && Array.isArray(input.data)) {
-    // Fallback for generic object with data array
-    arr = input.data
-  } else if (typeof input === 'object' && input !== null) {
-    // Array-like objects
-    arr = Array.from(input as ArrayLike<number>)
+    arr = input as ArrayLike<number>
+  } else if (typeof input === 'object') {
+    const { data } = input as { data?: unknown }
+    if (Array.isArray(data)) {
+      // Electron IPC serialized Buffer: { type: 'Buffer', data: [...] }
+      arr = data as number[]
+    } else {
+      // Array-like objects
+      arr = Array.from(input as ArrayLike<number>)
+    }
   }
 
   return Array.from(arr)
@@ -224,12 +228,16 @@ const RegisterBlock = memo<RegisterBlockProps>(
         onMouseEnter={handleMouseEnter}
         onClick={handleClick}
         style={{
-          background: isSelected ? '#bfdbfe' : isEditing ? '#fff' : '#f8f9fa',
-          border: isSelected
-            ? '1px solid #3b82f6'
+          background: isSelected
+            ? 'var(--c-select-bg)'
             : isEditing
-              ? '1px solid #2563eb'
-              : '1px solid #e9ecef',
+              ? 'var(--c-bg)'
+              : 'var(--c-bg-cell)',
+          border: isSelected
+            ? '1px solid var(--c-select-border)'
+            : isEditing
+              ? '1px solid var(--c-accent)'
+              : '1px solid var(--c-border)',
           borderRadius: '4px',
           padding: '4px 2px',
           display: 'flex',
@@ -244,7 +252,7 @@ const RegisterBlock = memo<RegisterBlockProps>(
         <div
           style={{
             fontSize: '10px',
-            color: isSelected ? '#1e3a8a' : '#adb5bd',
+            color: isSelected ? 'var(--c-select-fg)' : 'var(--c-text-mute)',
             marginBottom: '2px',
             fontFamily: 'monospace'
           }}
@@ -264,7 +272,7 @@ const RegisterBlock = memo<RegisterBlockProps>(
             border: 'none',
             background: 'transparent',
             fontWeight: 600,
-            color: isEditing ? '#000' : isReadOnly ? '#2563eb' : '#495057',
+            color: isEditing ? 'var(--c-text)' : isReadOnly ? 'var(--c-accent)' : 'var(--c-text)',
             outline: 'none',
             fontSize: is32Bit ? '14px' : '13px',
             fontFamily: 'monospace',
@@ -286,9 +294,12 @@ const RegisterBlock = memo<RegisterBlockProps>(
   }
 )
 
+RegisterBlock.displayName = 'RegisterBlock'
+
 // --- Main Component ---
 const ModbusDebugger: React.FC = () => {
   const initialConfig = loadConfig()
+  const { theme, toggleTheme } = useTheme()
 
   // State
   const [settings, setSettings] = useState<ConnectionSettings>(initialConfig.settings)
@@ -408,22 +419,27 @@ const ModbusDebugger: React.FC = () => {
     else if (!silent) addLog('SYS', `Command FC:${fcNum} (Auto-read skip)`, undefined)
   }
 
+  // What one auto-read tick does. Kept in a ref and refreshed every render so
+  // the interval always runs current logic without listing every field it
+  // touches as a dependency — listing them tore the interval down and restarted
+  // the 2s timer on each keystroke in the address or count field.
+  const autoReadTickRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    autoReadTickRef.current = () => {
+      // Skip this tick rather than stacking a request on top of an in-flight
+      // one — overlapping requests on one client time each other out.
+      if (busyRef.current) return
+      const fcNum = parseFC(effectiveFc)
+      if (fcNum >= 1 && fcNum <= 4) handleCommand(false)
+    }
+  })
+
   // Auto Read Interval
   useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (autoRead && connected) {
-      interval = setInterval(() => {
-        // Skip this tick rather than stacking a request on top of an in-flight
-        // one — overlapping requests on one client time each other out.
-        if (busyRef.current) return
-        const fcNum = parseFC(effectiveFc)
-        if (fcNum >= 1 && fcNum <= 4) handleCommand(false)
-      }, 2000)
-    }
+    if (!autoRead || !connected) return undefined
+    const interval = setInterval(() => autoReadTickRef.current(), 2000)
     return () => clearInterval(interval)
-    // `sending` is deliberately not a dependency: it would tear down and
-    // recreate the interval on every request. `busyRef` is checked per tick.
-  }, [autoRead, connected, effectiveFc, address, countParam, addrFormat, settings])
+  }, [autoRead, connected])
 
   // --- GRID CALLBACKS ---
   const handleSelectionStart = useCallback((idx: number) => {
@@ -514,8 +530,8 @@ const ModbusDebugger: React.FC = () => {
       const list = await window.modbusAPI.scanSerialPorts()
       setPorts(list)
       if (list.length > 0 && !settings.serialPort) updateInfo('serialPort', list[0].path)
-    } catch (e: any) {
-      addLog('SYS', 'Scan Error', e.message)
+    } catch (e: unknown) {
+      addLog('SYS', 'Scan Error', errMsg(e))
     }
   }
 
@@ -535,9 +551,9 @@ const ModbusDebugger: React.FC = () => {
         setConnected(true)
         addLog('SYS', `Connected (Timeout: ${settings.timeout}ms)`)
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       setConnected(false)
-      addLog('SYS', 'Connection Error', e.message)
+      addLog('SYS', 'Connection Error', errMsg(e))
     } finally {
       busyRef.current = false
       setSending(false)
@@ -558,7 +574,7 @@ const ModbusDebugger: React.FC = () => {
       if (!silent) setSending(true)
       const execute = async () => {
         const res = await window.modbusAPI.read({
-          functionCode: fcNum as any,
+          functionCode: fcNum,
           address: addrNum,
           count
         })
@@ -569,8 +585,8 @@ const ModbusDebugger: React.FC = () => {
           addLog('SYS', `Read ${res.length} items from ${formatAddress(addrNum, addrFormat)}`)
       }
       await (silent ? execute() : minDelay(execute()))
-    } catch (e: any) {
-      addLog('SYS', 'Read Error', e.message)
+    } catch (e: unknown) {
+      addLog('SYS', 'Read Error', errMsg(e))
     } finally {
       busyRef.current = false
       if (!silent) setSending(false)
@@ -609,7 +625,7 @@ const ModbusDebugger: React.FC = () => {
         if (connected) {
           const readFc = fcNum === 5 || fcNum === 15 ? 1 : 3
           const refreshRes = await window.modbusAPI.read({
-            functionCode: readFc as any,
+            functionCode: readFc,
             address: startAddr,
             count
           })
@@ -626,8 +642,8 @@ const ModbusDebugger: React.FC = () => {
         }
       }
       await minDelay(execute())
-    } catch (e: any) {
-      addLog('SYS', 'Write Error', e.message)
+    } catch (e: unknown) {
+      addLog('SYS', 'Write Error', errMsg(e))
     } finally {
       busyRef.current = false
       setSending(false)
@@ -649,7 +665,8 @@ const ModbusDebugger: React.FC = () => {
     setAddress(!isNaN(val) ? val.toString(nextFmt === 'HEX' ? 16 : 10).toUpperCase() : '0')
   }
 
-  const updateInfo = (k: keyof ConnectionSettings, v: any) => setSettings((p) => ({ ...p, [k]: v }))
+  const updateInfo = <K extends keyof ConnectionSettings>(k: K, v: ConnectionSettings[K]): void =>
+    setSettings((p) => ({ ...p, [k]: v }))
   const preventEnter = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') e.preventDefault()
   }
@@ -665,7 +682,7 @@ const ModbusDebugger: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#a1a1aa'
+            color: 'var(--c-text-mute)'
           }}
         >
           <div style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.3 }}>⊞</div>
@@ -729,17 +746,17 @@ const ModbusDebugger: React.FC = () => {
     padding: '0 10px',
     height: '36px',
     borderRadius: '6px',
-    border: '1px solid #e4e4e7',
+    border: '1px solid var(--c-border)',
     fontSize: '13px',
-    color: '#18181b',
-    background: '#fff',
+    color: 'var(--c-text)',
+    background: 'var(--c-bg)',
     transition: 'border 0.2s',
     boxSizing: 'border-box' as const
   }
   const labelStyle = {
     fontSize: '12px',
     fontWeight: 600,
-    color: '#495057',
+    color: 'var(--c-text)',
     marginBottom: '6px',
     display: 'block'
   }
@@ -757,7 +774,7 @@ const ModbusDebugger: React.FC = () => {
     border: 'none',
     fontSize: '11px',
     cursor: 'pointer',
-    color: '#71717a'
+    color: 'var(--c-text-sub)'
   }
 
   return (
@@ -767,7 +784,7 @@ const ModbusDebugger: React.FC = () => {
         width: '100%',
         padding: '20px',
         boxSizing: 'border-box',
-        background: '#fff',
+        background: 'var(--c-bg)',
         display: 'flex',
         flexDirection: 'column',
         gap: '16px'
@@ -780,7 +797,7 @@ const ModbusDebugger: React.FC = () => {
           <select
             style={{ ...inputBase, width: '100%', padding: '0 8px' }}
             value={settings.mode}
-            onChange={(e) => updateInfo('mode', e.target.value)}
+            onChange={(e) => updateInfo('mode', e.target.value as ModbusMode)}
           >
             <option value="RTU">RTU</option>
             <option value="TCP">TCP</option>
@@ -828,7 +845,7 @@ const ModbusDebugger: React.FC = () => {
                   style={{
                     ...inputBase,
                     width: '36px',
-                    background: '#f8f9fa',
+                    background: 'var(--c-bg-cell)',
                     padding: 0,
                     cursor: 'pointer'
                   }}
@@ -877,14 +894,15 @@ const ModbusDebugger: React.FC = () => {
             width: '120px',
             fontWeight: 600,
             cursor: sending ? 'wait' : 'pointer',
-            background: connected ? '#ef4444' : '#18181b',
-            color: '#fff',
+            background: connected ? 'var(--c-danger)' : 'var(--c-primary)',
+            color: connected ? '#fff' : 'var(--c-primary-fg)',
             border: 'none',
             opacity: sending ? 0.7 : 1
           }}
         >
           {sending ? '...' : connected ? 'Disconnect' : 'Connect'}
         </button>
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </div>
 
       {/* 2. Commands */}
@@ -929,7 +947,7 @@ const ModbusDebugger: React.FC = () => {
                 ...inputBase,
                 width: '70px',
                 borderRadius: '0 6px 6px 0',
-                background: '#f8f9fa',
+                background: 'var(--c-bg-cell)',
                 cursor: 'pointer',
                 fontSize: '11px',
                 fontWeight: 600,
@@ -961,7 +979,7 @@ const ModbusDebugger: React.FC = () => {
                 ...inputBase,
                 width: '50px',
                 borderRadius: '0 6px 6px 0',
-                background: '#f8f9fa',
+                background: 'var(--c-bg-cell)',
                 cursor: 'pointer',
                 fontSize: '11px',
                 fontWeight: 600,
@@ -992,8 +1010,8 @@ const ModbusDebugger: React.FC = () => {
                 fontWeight: 600,
                 border: 'none',
                 cursor: !connected ? 'not-allowed' : 'pointer',
-                background: autoRead ? '#10b981' : '#f8f9fa',
-                color: autoRead ? '#fff' : '#18181b'
+                background: autoRead ? 'var(--c-success)' : 'var(--c-bg-cell)',
+                color: autoRead ? '#fff' : 'var(--c-text)'
               }}
             >
               {autoRead ? 'Stop' : 'Auto'}
@@ -1008,7 +1026,7 @@ const ModbusDebugger: React.FC = () => {
               fontWeight: 600,
               border: 'none',
               cursor: !connected || sending ? 'not-allowed' : 'pointer',
-              background: '#2563eb',
+              background: 'var(--c-accent)',
               color: '#fff',
               opacity: !connected || sending ? 0.5 : 1
             }}
@@ -1026,31 +1044,33 @@ const ModbusDebugger: React.FC = () => {
           display: 'flex',
           flexDirection: 'column',
           minHeight: '0',
-          border: '1px solid #e4e4e7',
+          border: '1px solid var(--c-border)',
           borderRadius: '8px',
-          background: '#fafafa',
+          background: 'var(--c-bg-mute)',
           overflow: 'hidden'
         }}
       >
         <div
           style={{
             padding: '8px 16px',
-            background: '#fff',
-            borderBottom: '1px solid #e4e4e7',
+            background: 'var(--c-bg)',
+            borderBottom: '1px solid var(--c-border)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center'
           }}
         >
-          <span style={{ fontWeight: 600, fontSize: '13px', color: '#18181b' }}>Data Monitor</span>
+          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--c-text)' }}>
+            Data Monitor
+          </span>
           <div style={{ display: 'flex', gap: '4px' }}>
             {(['DEC_U', 'DEC_S', 'UINT32', 'HEX', 'FLOAT', 'ASCII'] as DataFormat[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setDataFormat(f)}
                 style={{
-                  background: dataFormat === f ? '#e4e4e7' : 'transparent',
-                  color: dataFormat === f ? '#000' : '#71717a',
+                  background: dataFormat === f ? 'var(--c-border)' : 'transparent',
+                  color: dataFormat === f ? 'var(--c-text)' : 'var(--c-text-sub)',
                   border: 'none',
                   padding: '4px 8px',
                   borderRadius: '4px',
@@ -1072,12 +1092,12 @@ const ModbusDebugger: React.FC = () => {
         style={{
           flex: showLogs ? 1 : '0 0 32px',
           transition: 'flex 0.3s',
-          border: '1px solid #e4e4e7',
+          border: '1px solid var(--c-border)',
           borderRadius: '8px',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          background: '#fff'
+          background: 'var(--c-bg)'
         }}
       >
         {/* Header Bar: Click disabled on container */}
@@ -1085,15 +1105,15 @@ const ModbusDebugger: React.FC = () => {
           style={{
             padding: '0 12px',
             height: '32px',
-            background: '#f4f4f5',
+            background: 'var(--c-bg-sub)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: showLogs ? '1px solid #e4e4e7' : 'none',
+            borderBottom: showLogs ? '1px solid var(--c-border)' : 'none',
             cursor: 'default'
           }}
         >
-          <span style={{ color: '#18181b', fontSize: '11px', fontWeight: 700 }}>
+          <span style={{ color: 'var(--c-text)', fontSize: '11px', fontWeight: 700 }}>
             LOGS {logs.length > 0 && !showLogs && `— ${logs[logs.length - 1].msg}`}
           </span>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1106,7 +1126,7 @@ const ModbusDebugger: React.FC = () => {
                   gap: '4px',
                   fontSize: '11px',
                   cursor: 'pointer',
-                  color: '#3f3f46',
+                  color: 'var(--c-text-sub)',
                   fontWeight: 600,
                   marginRight: '6px'
                 }}
@@ -1142,7 +1162,9 @@ const ModbusDebugger: React.FC = () => {
                 userSelect: 'none'
               }}
             >
-              <span style={{ fontSize: '10px', color: '#a1a1aa' }}>{showLogs ? '▼' : '▲'}</span>
+              <span style={{ fontSize: '10px', color: 'var(--c-text-mute)' }}>
+                {showLogs ? '▼' : '▲'}
+              </span>
             </div>
           </div>
         </div>
@@ -1158,17 +1180,22 @@ const ModbusDebugger: React.FC = () => {
         >
           {logs.map((l) => (
             <div key={l.id} style={{ marginBottom: '4px', display: 'flex', gap: '8px' }}>
-              <span style={{ color: '#a1a1aa', minWidth: '60px' }}>{l.time}</span>
+              <span style={{ color: 'var(--c-text-mute)', minWidth: '60px' }}>{l.time}</span>
               <span
                 style={{
                   fontWeight: 700,
                   minWidth: '24px',
-                  color: l.dir === 'TX' ? '#d97706' : l.dir === 'RX' ? '#059669' : '#ef4444'
+                  color:
+                    l.dir === 'TX'
+                      ? 'var(--c-tx)'
+                      : l.dir === 'RX'
+                        ? 'var(--c-rx)'
+                        : 'var(--c-danger)'
                 }}
               >
                 {l.dir}
               </span>
-              <span style={{ color: '#3f3f46' }}>{l.msg}</span>
+              <span style={{ color: 'var(--c-text-sub)' }}>{l.msg}</span>
             </div>
           ))}
         </div>

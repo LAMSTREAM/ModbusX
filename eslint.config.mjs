@@ -27,7 +27,12 @@ export default defineConfig(
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules,
       'prettier/prettier': ['error', { endOfLine: 'auto' }],
-      '@typescript-eslint/explicit-function-return-type': 'off'
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      // Redundant in a TypeScript codebase: props are validated by the compiler,
+      // and eslint-plugin-react cannot see the type argument on
+      // `memo<Props>(...)`, so it reported every prop of RegisterBlock as
+      // missing validation.
+      'react/prop-types': 'off'
     }
   },
   eslintConfigPrettier
