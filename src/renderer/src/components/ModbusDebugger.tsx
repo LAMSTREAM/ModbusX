@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import { ConnectionSettings, ModbusMode, ModbusRawLog } from '../../../modbus/modbus'
+import BrandMark from './BrandMark'
 import ThemeToggle from './ThemeToggle'
 import { useTheme } from '../hooks/useTheme'
 
@@ -790,6 +791,35 @@ const ModbusDebugger: React.FC = () => {
         gap: '16px'
       }}
     >
+      {/* 0. App header — identity on the left, app-level chrome on the right.
+          Theme belongs here rather than in the connection form: it is not a
+          Modbus setting. */}
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          paddingBottom: '12px',
+          borderBottom: '1px solid var(--c-border)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <BrandMark size={18} />
+          <span
+            style={{
+              fontSize: '13px',
+              fontWeight: 600,
+              letterSpacing: '0.01em',
+              color: 'var(--c-text)'
+            }}
+          >
+            ModbusX
+          </span>
+        </div>
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+      </header>
+
       {/* 1. Settings */}
       <div style={rowStyle}>
         <div style={flexFixed('80px')}>
@@ -902,7 +932,6 @@ const ModbusDebugger: React.FC = () => {
         >
           {sending ? '...' : connected ? 'Disconnect' : 'Connect'}
         </button>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </div>
 
       {/* 2. Commands */}

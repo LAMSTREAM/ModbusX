@@ -26,6 +26,10 @@ html {
   --c-danger: #ef4444;
   --c-success: #10b981;
   --c-warn: #f59e0b;
+  --c-brand: #ffb224;
+
+  /* drives native control rendering: checkbox, select popup, scrollbars */
+  color-scheme: light;
 
   /* register-grid selection */
   --c-select-bg: #bfdbfe;
@@ -62,6 +66,9 @@ html {
     --c-danger: #ef4444;
     --c-success: #10b981;
     --c-warn: #f59e0b;
+    --c-brand: #ffb224;
+
+    color-scheme: dark;
 
     --c-select-bg: #1e3a8a;
     --c-select-border: #3b82f6;
@@ -95,6 +102,9 @@ html {
   --c-danger: #ef4444;
   --c-success: #10b981;
   --c-warn: #f59e0b;
+  --c-brand: #ffb224;
+
+  color-scheme: dark;
 
   --c-select-bg: #1e3a8a;
   --c-select-border: #3b82f6;
@@ -127,7 +137,6 @@ body {
   min-width: 100vw;
 
   color: var(--c-text);
-  color-scheme: light dark;
   font-family:
     'Inter',
     -apple-system,
