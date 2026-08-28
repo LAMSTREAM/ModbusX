@@ -35,10 +35,9 @@ const LogPane: React.FC<LogPaneProps> = ({
   return (
     <Card
       className={cn(
-        // bg-background is explicit and load-bearing: Card defaults to bg-card,
-        // which maps from --c-bg-mute and belongs to the Data Monitor panel
-        // only. This panel was var(--c-bg). Without the override it would
-        // silently change colour.
+        // bg-background is explicit and load-bearing: Card defaults to
+        // bg-card, which is the Data Monitor panel's fill, not this one's.
+        // Without the override the Logs panel would silently change colour.
         'flex flex-col gap-0 overflow-hidden rounded-lg border border-border bg-background py-0 shadow-none transition-[flex]',
         showLogs ? 'flex-1' : 'flex-[0_0_32px]'
       )}
