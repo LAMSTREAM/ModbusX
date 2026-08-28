@@ -33,45 +33,16 @@ import {
 // text and will not emit a class it cannot see spelled out, so building
 // `minmax(${colWidth},1fr)` from a variable would silently produce no rule at
 // all. This is the mechanism AC7 rests on.
-// The register grid is a hex editor: a fixed 16 registers per row, rows
-// aligned to 0x**0 boundaries, with the row ruler and column headers as cells
-// of the SAME css grid. Everything therefore lines up by construction — no
-// measurement, no scroll syncing, and no way for the ruler to drift out of
-// step with the data.
-//
-// 16 is fixed rather than auto-filled on purpose. Auto-fill made the column
-// count depend on window width, so a row could begin at any address and the
-// ruler could not be read as an index at all. A stable 16 is what makes
-// `+0..+F` mean something.
-//
-// Two literal templates, never assembled from a variable: Tailwind scans
-// source text and will not emit a class it cannot see spelled out. The leading
-// track is the ruler gutter; the min-width is what makes the grid scroll
-// horizontally rather than crushing cells below legibility.
-const GRID_NARROW =
-  'grid min-w-[976px] gap-2 [grid-template-columns:3.25rem_repeat(16,minmax(52px,1fr))]'
-const GRID_WIDE =
-  'grid min-w-[904px] gap-2 [grid-template-columns:3.25rem_repeat(8,minmax(104px,1fr))]'
+// Two complete literal class strings, never assembled from a variable:
+// Tailwind scans source text and will not emit a class it cannot see spelled
+// out. The wide track exists for the formats whose text does not fit 70px —
+// the 32-bit pair, and BIN, whose sixteen digits need roughly 125px.
+const GRID_NARROW = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(70px,1fr))]'
+const GRID_WIDE = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))]'
 
-/**
- * Row geometry per format. Two things vary: how many registers a row spans,
- * and how many cells that is.
- *
- * BIN is the reason this is a table rather than a boolean. Sixteen binary
- * digits need roughly 125px at the cell's 13px monospace, so it cannot share
- * the 52px track the other 16-bit formats use — it gets the wide track and
- * therefore covers 8 registers per row instead of 16. Alignment survives
- * because 8 is still a power of two: rows land on 0x**0 and 0x**8.
- */
-const ROW_LAYOUT: Record<DataFormat, { regs: number; cells: number; wide: boolean }> = {
-  DEC_U: { regs: 16, cells: 16, wide: false },
-  DEC_S: { regs: 16, cells: 16, wide: false },
-  HEX: { regs: 16, cells: 16, wide: false },
-  ASCII: { regs: 16, cells: 16, wide: false },
-  BIN: { regs: 8, cells: 8, wide: true },
-  UINT32: { regs: 16, cells: 8, wide: true },
-  FLOAT: { regs: 16, cells: 8, wide: true }
-}
+/** Formats that need the wide track, and those that pair two registers. */
+const WIDE_FORMATS: DataFormat[] = ['BIN', 'UINT32', 'FLOAT']
+const PAIRED_FORMATS: DataFormat[] = ['UINT32', 'FLOAT']
 
 // `window.modbusAPI` is declared once, globally, in modbus.d.ts as `IModbusAPI`.
 // Re-declaring a structurally different shape here made the two augmentations
@@ -508,78 +479,38 @@ const ModbusDebugger: React.FC = () => {
       )
     }
 
-    const layout = ROW_LAYOUT[dataFormat]
-    const regsPerRow = layout.regs
-    const cellsPerRow = layout.cells
-    const step = regsPerRow / cellsPerRow
-
-    // Align the first row down to a row boundary and leave the gap as holes,
-    // so every row starts at a round address no matter where the read began.
-    const alignedStart = Math.floor(monitorData.startAddr / regsPerRow) * regsPerRow
-    const rowCount = Math.ceil(
-      (monitorData.startAddr - alignedStart + monitorData.values.length) / regsPerRow
-    )
-
-    const cells: React.ReactNode[] = []
-    for (let r = 0; r < rowCount; r++) {
-      const rowAddr = alignedStart + r * regsPerRow
-      cells.push(
-        <div
-          key={`ruler-${rowAddr}`}
-          className="sticky left-0 z-10 flex items-center justify-end bg-card pr-1 font-mono text-[10px] text-faint tabular-nums"
-        >
-          {formatAddress(rowAddr, addrFormat, addrBase)}
-        </div>
-      )
-      for (let c = 0; c < cellsPerRow; c++) {
-        const currentAddr = rowAddr + c * step
-        const idx = currentAddr - monitorData.startAddr
-
-        // Holes in the aligned rectangle: before the read's first address, or
-        // past its last.
-        if (idx < 0 || idx >= monitorData.values.length) {
-          cells.push(<div key={`pad-${currentAddr}`} aria-hidden="true" />)
-          continue
-        }
-
-        let isSelected = false
-        if (selection) {
-          const low = Math.min(selection.start, selection.end)
-          const high = Math.max(selection.start, selection.end)
-          isSelected = idx >= low && idx <= high
-        }
-
-        cells.push(
-          <RegisterBlock
-            key={currentAddr}
-            index={idx}
-            address={currentAddr}
-            value={monitorData.values[idx]}
-            nextValue={monitorData.values[idx + 1]}
-            format={dataFormat}
-            isSelected={isSelected}
-            onSelectionStart={handleSelectionStart}
-            onSelectionEnter={handleSelectionEnter}
-            onEdit={handleCellEdit}
-          />
-        )
-      }
-    }
+    const isPaired = PAIRED_FORMATS.includes(dataFormat)
 
     return (
-      <div className={layout.wide ? GRID_WIDE : GRID_NARROW}>
-        {/* Corner and column headers, sticky so the offsets stay readable
-            while scrolling a long read. */}
-        <div className="sticky top-0 left-0 z-20 bg-card" aria-hidden="true" />
-        {Array.from({ length: cellsPerRow }, (_, c) => (
-          <div
-            key={`head-${c}`}
-            className="sticky top-0 z-10 bg-card pb-1 text-center font-mono text-[10px] text-faint tabular-nums"
-          >
-            +{(c * step).toString(16).toUpperCase()}
-          </div>
-        ))}
-        {cells}
+      <div className={WIDE_FORMATS.includes(dataFormat) ? GRID_WIDE : GRID_NARROW}>
+        {monitorData.values.map((val, idx) => {
+          if (isPaired && idx % 2 !== 0) return null
+          const currentAddr = monitorData.startAddr + idx
+
+          let isSelected = false
+          if (selection) {
+            const low = Math.min(selection.start, selection.end)
+            const high = Math.max(selection.start, selection.end)
+            isSelected = idx >= low && idx <= high
+          }
+
+          return (
+            <RegisterBlock
+              key={currentAddr}
+              index={idx}
+              address={currentAddr}
+              value={val}
+              nextValue={monitorData.values[idx + 1]}
+              format={dataFormat}
+              addrFormat={addrFormat}
+              addrBase={addrBase}
+              isSelected={isSelected}
+              onSelectionStart={handleSelectionStart}
+              onSelectionEnter={handleSelectionEnter}
+              onEdit={handleCellEdit}
+            />
+          )
+        })}
       </div>
     )
   }, [

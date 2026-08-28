@@ -30,7 +30,7 @@ export interface LogItem {
   detail?: string
 }
 
-export type DataFormat = 'HEX' | 'DEC_U' | 'DEC_S' | 'BIN' | 'UINT32' | 'ASCII' | 'FLOAT'
+export type DataFormat = 'BIN' | 'HEX' | 'UINT16' | 'SINT16' | 'UINT32' | 'FLOAT' | 'ASCII'
 export type AddressFormat = 'HEX' | 'DEC'
 
 export interface SavedConfig {
@@ -55,6 +55,12 @@ export interface SavedConfig {
 
 // --- Helpers ---
 
+/** Formats renamed after the first release, mapped to their current names. */
+const LEGACY_FORMATS: Record<string, DataFormat> = {
+  DEC_U: 'UINT16',
+  DEC_S: 'SINT16'
+}
+
 export const loadConfig = (): SavedConfig => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -66,6 +72,9 @@ export const loadConfig = (): SavedConfig => {
         // reach the arithmetic.
         addrBase: 0,
         ...parsed,
+        // DEC_U/DEC_S were renamed to UINT16/SINT16. A config saved under the
+        // old names would otherwise select nothing and render every cell blank.
+        dataFormat: LEGACY_FORMATS[parsed.dataFormat] ?? parsed.dataFormat,
         settings: { ...DEFAULT_SETTINGS, ...parsed.settings }
       }
     }
@@ -80,7 +89,7 @@ export const loadConfig = (): SavedConfig => {
     addrFormat: 'DEC',
     addrBase: 0,
     countParam: '10',
-    dataFormat: 'DEC_U',
+    dataFormat: 'UINT16',
     customFcMode: false,
     showLogs: true,
     showRawLog: false

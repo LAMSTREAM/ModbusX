@@ -1,6 +1,6 @@
 import React, { memo, useState } from 'react'
-import type { DataFormat } from '../lib/modbus-config'
-import { formatValue } from '../lib/modbus-format'
+import type { AddressFormat, DataFormat } from '../lib/modbus-config'
+import { formatAddress, formatValue } from '../lib/modbus-format'
 import { cn } from '../lib/utils'
 
 // Module-level and frozen. The grid renders these hundreds of times per poll,
@@ -41,6 +41,9 @@ export interface RegisterBlockProps {
   value: number
   nextValue?: number
   format: DataFormat
+  addrFormat: AddressFormat
+  /** Display offset applied to the address label. */
+  addrBase: number
   index: number
   isSelected: boolean
   onSelectionStart: (index: number) => void
@@ -54,6 +57,8 @@ const RegisterBlock = memo<RegisterBlockProps>(
     value,
     nextValue,
     format,
+    addrFormat,
+    addrBase,
     index,
     isSelected,
     onSelectionStart,
@@ -67,6 +72,9 @@ const RegisterBlock = memo<RegisterBlockProps>(
     // formatValue, including the two-register UINT32 and FLOAT — so no format
     // is read-only any more.
     const is32Bit = format === 'FLOAT' || format === 'UINT32'
+    const addressLabel = is32Bit
+      ? `${formatAddress(address, addrFormat, addrBase)}-${formatAddress(address + 1, addrFormat, addrBase).slice(-2)}`
+      : formatAddress(address, addrFormat, addrBase)
     const displayVal = isEditing ? editingVal : formatValue(value, nextValue, format)
 
     const handleFocus = () => {
@@ -109,10 +117,14 @@ const RegisterBlock = memo<RegisterBlockProps>(
         onClick={handleClick}
         className={isSelected ? CELL_SELECTED : isEditing ? CELL_EDITING : CELL_IDLE}
       >
-        {/* The per-cell address label is gone: the row ruler and the column
-            headers give the same information once, instead of 125 times, and
-            without them the cell is a third shorter — which buys back more
-            rows than the ruler gutter costs in columns. */}
+        <div
+          className={cn(
+            'mb-0.5 font-mono text-[10px]',
+            isSelected ? 'text-selection-foreground' : 'text-faint'
+          )}
+        >
+          {addressLabel}
+        </div>
         <input
           value={displayVal}
           onChange={handleChange}
@@ -130,7 +142,9 @@ const RegisterBlock = memo<RegisterBlockProps>(
       prev.nextValue === next.nextValue &&
       prev.isSelected === next.isSelected &&
       prev.format === next.format &&
-      prev.address === next.address
+      prev.address === next.address &&
+      prev.addrFormat === next.addrFormat &&
+      prev.addrBase === next.addrBase
     )
   }
 )
@@ -151,7 +165,7 @@ RegisterBlock.displayName = 'RegisterBlock'
 // sides stops distribution over a union, so two props added at once also fail.
 type Compared = Pick<
   RegisterBlockProps,
-  'value' | 'nextValue' | 'isSelected' | 'format' | 'address'
+  'value' | 'nextValue' | 'isSelected' | 'format' | 'address' | 'addrFormat' | 'addrBase'
 >
 type Stable = Pick<RegisterBlockProps, 'index' | 'onSelectionStart' | 'onSelectionEnter' | 'onEdit'>
 type Unaccounted = Exclude<keyof RegisterBlockProps, keyof Compared | keyof Stable>

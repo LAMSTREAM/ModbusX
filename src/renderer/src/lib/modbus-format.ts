@@ -66,7 +66,7 @@ export const formatValue = (
   switch (format) {
     case 'HEX':
       return `0x${value.toString(16).toUpperCase().padStart(4, '0')}`
-    case 'DEC_S':
+    case 'SINT16':
       return (value > 32767 ? value - 65536 : value).toString()
     case 'BIN':
       return value.toString(2).padStart(16, '0')
@@ -89,7 +89,7 @@ export const formatValue = (
         (lo > 31 && lo < 127 ? String.fromCharCode(lo) : '.')
       )
     }
-    case 'DEC_U':
+    case 'UINT16':
     default:
       return value.toString()
   }
@@ -130,7 +130,7 @@ export const parseValue = (text: string, format: DataFormat): number[] | null =>
       if (!/^[01]{1,16}$/.test(bits)) return null
       return u16(parseInt(bits, 2))
     }
-    case 'DEC_S': {
+    case 'SINT16': {
       if (!/^-?\d+$/.test(s)) return null
       const n = parseInt(s, 10)
       if (n < -32768 || n > 32767) return null
@@ -159,7 +159,7 @@ export const parseValue = (text: string, format: DataFormat): number[] | null =>
       view.setFloat32(0, n, false)
       return [view.getUint16(0, false), view.getUint16(2, false)]
     }
-    case 'DEC_U':
+    case 'UINT16':
     default: {
       if (!/^\d+$/.test(s)) return null
       return u16(parseInt(s, 10))

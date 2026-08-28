@@ -13,7 +13,7 @@ export interface DataMonitorProps {
   children: React.ReactNode
 }
 
-const FORMATS: DataFormat[] = ['DEC_U', 'DEC_S', 'HEX', 'BIN', 'UINT32', 'FLOAT', 'ASCII']
+const FORMATS: DataFormat[] = ['BIN', 'HEX', 'UINT16', 'SINT16', 'UINT32', 'FLOAT', 'ASCII']
 
 // Compressed to the pre-rewrite metrics: 4px/8px padding, 11px semibold.
 // shadcn's ToggleGroupItem is taller and larger by default.
@@ -61,12 +61,10 @@ const DataMonitor: React.FC<DataMonitorProps> = ({
           ))}
         </ToggleGroup>
       </div>
-      {/* One scroll container. The ruler and column headers are cells of the
-          grid itself (see ModbusDebugger), so they scroll with the data and
-          cannot fall out of alignment with it. `overflow-auto` rather than
-          `overflow-y-auto`: the grid has a min-width and scrolls sideways
-          instead of crushing cells when the window is narrow. */}
-      <div data-grid-body="" className="min-h-0 flex-1 overflow-auto p-4">
+      {/* `data-grid-body` is a stable hook for the verification scripts; the
+          structural selectors they used had to be re-anchored every time the
+          tree gained a level. */}
+      <div data-grid-body="" className="min-h-0 flex-1 overflow-y-auto p-4">
         {children}
       </div>
     </Card>

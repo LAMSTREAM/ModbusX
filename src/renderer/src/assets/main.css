@@ -270,6 +270,15 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+
+    /* shadcn's own template carries this and the primitives assume it.
+       Tailwind's `border` utility sets width only, so without it any element
+       that asks for a border and does not name a colour falls back to
+       `currentColor` — which is the TEXT colour. That is why the theme toggle,
+       the port refresh, Std and HEX all had near-black outlines in light mode
+       (measured: rgb(39,39,42), the foreground) while ordinary inputs, which
+       set their colour explicitly, correctly read #e4e4e7. */
+    border-color: var(--border);
   }
 
   body {
