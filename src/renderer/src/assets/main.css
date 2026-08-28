@@ -1,5 +1,100 @@
-html {
-  height: 100%;
+@import 'tailwindcss';
+
+/* Explicit source roots. v4 auto-detection under electron-vite's `src/renderer`
+   root is not something to bet the build on. Both resolve from this file. */
+@source '../';
+@source '../../index.html';
+
+/* Tailwind's `dark:` keys off `.dark` by default; this app keys off
+   `data-theme`. Two rules, deliberately:
+
+   1. the explicit attribute, which is what `useTheme` writes; and
+   2. the `prefers-color-scheme` branch, which covers the FIRST PAINTED FRAME.
+      `index.html` has no theme-priming inline script and `useEffect` runs after
+      paint, so there is a genuine frame with no `data-theme` at all. The palette
+      already handles that frame; without this second rule the shadcn primitives'
+      own `dark:` classes would render light chrome over a dark palette.
+
+   Verified against tailwindcss 4.3.3 before this file was written: two `@slot`s
+   in one block-form variant emit both rules.
+
+   `data-theme` must stay on <html>. Radix mounts Select/Popover content in a
+   document.body portal, which inherits the palette and the `[data-theme] *`
+   descendant form only because the attribute is on the root element. */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+}
+
+/* `inline` is mandatory. It keeps the var() reference inside each generated
+   utility so the :root overrides below still win. A non-inline @theme freezes
+   the light hex values into every utility at build time and dark mode stops
+   working everywhere — a failure that looks exactly like a broken `dark:`
+   variant but has a different cause. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* App-specific semantics with no shadcn slot. */
+  --color-action: var(--action);
+  --color-action-foreground: var(--action-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warn: var(--warn);
+  --color-brand: var(--brand);
+  --color-faint: var(--faint);
+  --color-cell: var(--cell);
+  --color-border-hover: var(--border-hover);
+  --color-selection: var(--selection);
+  --color-selection-border: var(--selection-border);
+  --color-selection-foreground: var(--selection-foreground);
+  --color-tx: var(--tx);
+  --color-rx: var(--rx);
+  --color-scrollbar: var(--scrollbar);
+  --color-scrollbar-hover: var(--scrollbar-hover);
+
+  /* 0.5rem, not shadcn's 0.625rem. With shadcn's calc() chain this yields
+     exactly 4px / 6px / 8px — the three radii already in the app (cell 4px,
+     controls 6px, panels 8px), so rounded-sm/md/lg reproduce current geometry
+     with no arbitrary values. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Both stacks are pinned. Without the mono pin, `font-mono` resolves to
+     Tailwind's ui-monospace stack, which on Windows lands on Consolas/Cascadia
+     — metrically WIDER than the generic `monospace` the grid uses today. That
+     is a direct hit on the density constraint, and AC7 cannot catch it because
+     the grid track is pinned by grid-template-columns regardless of glyph width. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: monospace;
 }
 
 /* Light is the base palette. Dark is applied in two places below: under
@@ -7,161 +102,204 @@ html {
    [data-theme='dark'] so an explicit choice wins in both directions. Every
    colour must be defined here on bare :root, never only inside a media query. */
 :root {
-  --c-bg: #ffffff;
-  --c-bg-sub: #f4f4f5;
-  --c-bg-mute: #fafafa;
-  --c-bg-cell: #f8f9fa;
+  --background: #ffffff;
+  --muted: #f4f4f5;
+  --secondary: #f4f4f5;
+  --accent: #f4f4f5;
+  --card: #fafafa;
+  --cell: #f8f9fa;
 
-  --c-border: #e4e4e7;
-  --c-border-hover: #d4d4d8;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --border-hover: #d4d4d8;
 
-  --c-text: #18181b;
-  --c-text-sub: #71717a;
-  --c-text-mute: #a1a1aa;
+  --foreground: #18181b;
+  --muted-foreground: #71717a;
+  --faint: #a1a1aa;
 
-  --c-primary: #18181b;
-  --c-primary-fg: #ffffff;
+  --primary: #18181b;
+  --primary-foreground: #ffffff;
 
-  --c-accent: #2563eb;
-  --c-danger: #ef4444;
-  --c-success: #10b981;
-  --c-warn: #f59e0b;
-  --c-brand: #ffb224;
+  --action: #2563eb;
+  --action-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #10b981;
+  --success-foreground: #ffffff;
+  --warn: #f59e0b;
+  --brand: #ffb224;
 
   /* drives native control rendering: checkbox, select popup, scrollbars */
   color-scheme: light;
 
   /* register-grid selection */
-  --c-select-bg: #bfdbfe;
-  --c-select-border: #3b82f6;
-  --c-select-fg: #1e3a8a;
+  --selection: #bfdbfe;
+  --selection-border: #3b82f6;
+  --selection-foreground: #1e3a8a;
 
   /* raw traffic log */
-  --c-tx: #d97706;
-  --c-rx: #059669;
+  --tx: #d97706;
+  --rx: #059669;
 
-  --c-scrollbar: #d4d4d8;
-  --c-scrollbar-hover: #a1a1aa;
+  --scrollbar: #d4d4d8;
+  --scrollbar-hover: #a1a1aa;
+
+  /* Derived and theme-invariant tokens — declared HERE ONLY, exactly once.
+     They are var() references or geometry, not literal colours: writing
+     `--popover: var(--background)` into all three blocks is not "the palette in
+     three places", it is the same indirection written three times, and it
+     defeats the indirection. The literal-valued colour tokens above do appear
+     in all three blocks. Enforced by scripts/check-palette.py (AC13 b1/b2). */
+  --popover: var(--background);
+  --popover-foreground: var(--foreground);
+  --card-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --ring: var(--action);
+  --radius: 0.5rem;
 }
 
 /* Zinc-based dark palette, mirroring the light token roles one-for-one. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --c-bg: #09090b;
-    --c-bg-sub: #18181b;
-    --c-bg-mute: #131316;
-    --c-bg-cell: #1c1c20;
+    --background: #09090b;
+    --muted: #18181b;
+    --secondary: #18181b;
+    --accent: #18181b;
+    --card: #131316;
+    --cell: #1c1c20;
 
-    --c-border: #27272a;
-    --c-border-hover: #3f3f46;
+    --border: #27272a;
+    --input: #27272a;
+    --border-hover: #3f3f46;
 
-    --c-text: #fafafa;
-    --c-text-sub: #a1a1aa;
-    --c-text-mute: #71717a;
+    --foreground: #fafafa;
+    --muted-foreground: #a1a1aa;
+    --faint: #71717a;
 
-    --c-primary: #fafafa;
-    --c-primary-fg: #18181b;
+    --primary: #fafafa;
+    --primary-foreground: #18181b;
 
-    --c-accent: #3b82f6;
-    --c-danger: #ef4444;
-    --c-success: #10b981;
-    --c-warn: #f59e0b;
-    --c-brand: #ffb224;
+    --action: #3b82f6;
+    --action-foreground: #ffffff;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --success: #10b981;
+    --success-foreground: #ffffff;
+    --warn: #f59e0b;
+    --brand: #ffb224;
 
     color-scheme: dark;
 
-    --c-select-bg: #1e3a8a;
-    --c-select-border: #3b82f6;
-    --c-select-fg: #bfdbfe;
+    --selection: #1e3a8a;
+    --selection-border: #3b82f6;
+    --selection-foreground: #bfdbfe;
 
-    --c-tx: #fbbf24;
-    --c-rx: #34d399;
+    --tx: #fbbf24;
+    --rx: #34d399;
 
-    --c-scrollbar: #3f3f46;
-    --c-scrollbar-hover: #52525b;
+    --scrollbar: #3f3f46;
+    --scrollbar-hover: #52525b;
   }
 }
 
 :root[data-theme='dark'] {
-  --c-bg: #09090b;
-  --c-bg-sub: #18181b;
-  --c-bg-mute: #131316;
-  --c-bg-cell: #1c1c20;
+  --background: #09090b;
+  --muted: #18181b;
+  --secondary: #18181b;
+  --accent: #18181b;
+  --card: #131316;
+  --cell: #1c1c20;
 
-  --c-border: #27272a;
-  --c-border-hover: #3f3f46;
+  --border: #27272a;
+  --input: #27272a;
+  --border-hover: #3f3f46;
 
-  --c-text: #fafafa;
-  --c-text-sub: #a1a1aa;
-  --c-text-mute: #71717a;
+  --foreground: #fafafa;
+  --muted-foreground: #a1a1aa;
+  --faint: #71717a;
 
-  --c-primary: #fafafa;
-  --c-primary-fg: #18181b;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
 
-  --c-accent: #3b82f6;
-  --c-danger: #ef4444;
-  --c-success: #10b981;
-  --c-warn: #f59e0b;
-  --c-brand: #ffb224;
+  --action: #3b82f6;
+  --action-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #10b981;
+  --success-foreground: #ffffff;
+  --warn: #f59e0b;
+  --brand: #ffb224;
 
   color-scheme: dark;
 
-  --c-select-bg: #1e3a8a;
-  --c-select-border: #3b82f6;
-  --c-select-fg: #bfdbfe;
+  --selection: #1e3a8a;
+  --selection-border: #3b82f6;
+  --selection-foreground: #bfdbfe;
 
-  --c-tx: #fbbf24;
-  --c-rx: #34d399;
+  --tx: #fbbf24;
+  --rx: #34d399;
 
-  --c-scrollbar: #3f3f46;
-  --c-scrollbar-hover: #52525b;
+  --scrollbar: #3f3f46;
+  --scrollbar-hover: #52525b;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* This layer comes after Tailwind's Preflight, so on source order within
+   `base` the rules here win where they overlap. */
+@layer base {
+  html {
+    height: 100%;
+  }
 
-body {
-  height: 100%;
-  min-height: 100vh;
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  background: radial-gradient(circle at 50% 30%, var(--c-bg-sub) 0%, var(--c-bg) 100%);
+  body {
+    height: 100%;
+    min-height: 100vh;
 
-  min-width: 100vw;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: radial-gradient(circle at 50% 30%, var(--muted) 0%, var(--background) 100%);
 
-  color: var(--c-text);
-  font-family:
-    'Inter',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  line-height: 1.5;
-}
+    min-width: 100vw;
 
-#root {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-  min-width: 100%;
-  padding: 0;
-  flex: 1;
-}
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
 
-input,
-select,
-button {
-  font-family: inherit;
-  outline: none;
+  #root {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    min-width: 100%;
+    padding: 0;
+    flex: 1;
+  }
+
+  input,
+  select,
+  button {
+    font-family: inherit;
+    outline: none;
+
+    /* Preflight sets `font: inherit` on form controls, and the `font`
+       shorthand carries line-height — so an input goes from the UA's `normal`
+       (~1.15) to the inherited 1.5. On the register cell's 13px input that is
+       +4.5px per cell, which compounds into fewer visible grid rows: a density
+       regression, and density is a hard constraint. Restoring `normal` makes
+       the Preflight delta for controls zero rather than accepting the loss.
+       Caught by the Step 6 dump gate (cell height 42px -> 46.5px). */
+    line-height: normal;
+  }
 }
 
 ::-webkit-scrollbar {
@@ -172,17 +310,66 @@ button {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--c-scrollbar);
+  background: var(--scrollbar);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--c-scrollbar-hover);
+  background: var(--scrollbar-hover);
+}
+
+/* ------------------------------------------------------------------------ */
+/* TEMPORARY — deleted in Step 16.                                           */
+/*                                                                           */
+/* Compatibility shim. The token rename invalidates all 72 inline styles in  */
+/* ModbusDebugger.tsx simultaneously, because every one reads var(--c-*).    */
+/* These aliases carry the un-ported sections until each is converted, so    */
+/* the app stays runnable and mechanically comparable at every commit.       */
+/*                                                                           */
+/* One block on bare :root is correct and sufficient, and its position       */
+/* relative to the palette blocks is irrelevant: var() substitution happens  */
+/* at computed-value time against the winning declaration of the referenced  */
+/* property ON THE SAME ELEMENT, and all three palette blocks target :root.  */
+/*                                                                           */
+/* AC4 (`grep -rn -- "--c-" src/renderer/` returns 0) is what guarantees     */
+/* this block actually goes away.                                            */
+/* ------------------------------------------------------------------------ */
+:root {
+  --c-bg: var(--background);
+  --c-bg-sub: var(--muted);
+  --c-bg-mute: var(--card);
+  --c-bg-cell: var(--cell);
+
+  --c-border: var(--border);
+  --c-border-hover: var(--border-hover);
+
+  --c-text: var(--foreground);
+  --c-text-sub: var(--muted-foreground);
+  --c-text-mute: var(--faint);
+
+  --c-primary: var(--primary);
+  --c-primary-fg: var(--primary-foreground);
+
+  --c-accent: var(--action);
+  --c-danger: var(--destructive);
+  --c-success: var(--success);
+  --c-warn: var(--warn);
+  --c-brand: var(--brand);
+
+  --c-select-bg: var(--selection);
+  --c-select-border: var(--selection-border);
+  --c-select-fg: var(--selection-foreground);
+
+  --c-tx: var(--tx);
+  --c-rx: var(--rx);
+
+  --c-scrollbar: var(--scrollbar);
+  --c-scrollbar-hover: var(--scrollbar-hover);
 }
 
 /* --- Theme toggle -------------------------------------------------------- */
 /* shadcn's mode-toggle: both icons are stacked in the same box and swapped by
    rotate+scale, so the button never reflows and the change reads as one motion
-   rather than two icons appearing. */
+   rather than two icons appearing. Removed in Step 10, which ports the header. */
 .theme-toggle {
   position: relative;
   width: 32px;
@@ -191,10 +378,10 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--c-bg);
-  color: var(--c-text);
+  background: var(--background);
+  color: var(--foreground);
   cursor: pointer;
   transition:
     background-color 0.15s ease,
@@ -202,12 +389,12 @@ button {
 }
 
 .theme-toggle:hover {
-  background: var(--c-bg-sub);
-  border-color: var(--c-border-hover);
+  background: var(--muted);
+  border-color: var(--border-hover);
 }
 
 .theme-toggle:focus-visible {
-  outline: 2px solid var(--c-accent);
+  outline: 2px solid var(--action);
   outline-offset: 2px;
 }
 

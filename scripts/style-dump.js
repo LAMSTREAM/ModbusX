@@ -114,6 +114,15 @@ function send(ws, method, params = {}) {
 function collect(selectors, props) {
   const misses = []
   const out = {}
+  // Freeze animation. `inputBase` carries `transition: border 0.2s`, so a dump
+  // taken right after a theme flip returns a MID-TRANSITION colour — measured:
+  // a dark-mode capture reported the light border #e4e4e7 instead of #27272a.
+  // Killing transitions makes the gate independent of when it runs.
+  const freeze = document.createElement('style')
+  freeze.textContent = '*,*::before,*::after{transition:none !important;animation:none !important}'
+  document.head.appendChild(freeze)
+  // Force a reflow so the frozen state is what getComputedStyle reads.
+  void document.documentElement.offsetHeight
   for (const [key, sel] of selectors) {
     const el = document.querySelector(sel)
     if (!el) {
@@ -125,12 +134,22 @@ function collect(selectors, props) {
     for (const p of props) entry[p] = cs.getPropertyValue(p).trim()
     out[key] = entry
   }
+  freeze.remove()
+
+  // Scrollbar presence changes the grid's content width by 8px, which moves
+  // every grid track by ~0.5px. grid-template-columns is an INVARIANT property
+  // in the gate, so an unrecorded scrollbar toggle reads as a density
+  // regression. Record it so a diff can be attributed rather than guessed at.
+  const gridEl = document.querySelector('#root > div > div:nth-of-type(3) > div:nth-of-type(2)')
+  const scrollbar = gridEl ? gridEl.offsetWidth - gridEl.clientWidth : null
+
   return {
     misses,
     dump: out,
     meta: {
       theme: document.documentElement.dataset.theme ?? null,
-      viewport: `${window.innerWidth}x${window.innerHeight}`
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+      gridScrollbarPx: scrollbar
     }
   }
 }
@@ -155,7 +174,7 @@ async function main() {
     mobile: false
   })
   // Let layout settle before reading computed styles back.
-  await new Promise((r) => setTimeout(r, 250))
+  await new Promise((r) => setTimeout(r, 600))
 
   const expression = `(${collect.toString()})(${JSON.stringify(SELECTORS)}, ${JSON.stringify(PROPS)})`
   const res = await send(ws, 'Runtime.evaluate', {

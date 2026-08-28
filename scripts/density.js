@@ -70,7 +70,13 @@ function measure() {
 
   const firstW = cells[0].getBoundingClientRect().width
 
+  // See style-dump.js: an 8px scrollbar moves every track by ~0.5px. Record it
+  // so a width delta can be attributed instead of guessed at.
+  const scrollHost = grid.parentElement
+  const scrollbarPx = scrollHost ? scrollHost.offsetWidth - scrollHost.clientWidth : null
+
   return {
+    scrollbarPx,
     cellCount: cells.length,
     fullyVisibleCells: fullyVisible,
     trackCount: tracks.length,
