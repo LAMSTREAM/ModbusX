@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Use upstream Electron mirrors
+        run: |
+          sed -i.bak '/electron_mirror/d;/electron_builder_binaries_mirror/d' .npmrc
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm build` runs typecheck first, so a type error fails the job. This
+      # is deliberately a real gate: the release script used to run a bare
+      # `tsc` against a references-only tsconfig, which compiled zero files and
+      # let a broken typecheck reach main.
+      - name: Typecheck & Build
+        run: pnpm run build
+
+      # Not a gate yet: there are pre-existing lint errors (mostly
+      # no-explicit-any and react/prop-types in ModbusDebugger.tsx). Surfaced
+      # here so the count is visible and can be driven down, then promoted to a
+      # blocking step.
+      - name: Lint (non-blocking)
+        continue-on-error: true
+        run: pnpm run lint

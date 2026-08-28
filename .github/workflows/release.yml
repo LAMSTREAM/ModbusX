@@ -1,4 +1,4 @@
-name: Build Windows x64 Release (pnpm)
+name: Release
 
 permissions:
   contents: write
@@ -9,9 +9,20 @@ on:
       - 'v*'
 
 jobs:
-  release-win:
-    name: Build Windows x64
-    runs-on: windows-latest
+  release:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not cancel the artifacts of the others.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows x64
+          - os: macos-latest
+            name: macOS x64 + arm64
+          - os: ubuntu-latest
+            name: Linux x64
 
     steps:
       - name: Checkout Code
@@ -28,11 +39,35 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Verify tag matches package.json version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          echo "tag=$TAG package.json=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Use upstream Electron mirrors
+        shell: bash
+        # .npmrc pins npmmirror.com, which is right for local development in
+        # China but slow and rate-limited from GitHub's runners. Strip it here
+        # so CI pulls Electron and the builder binaries from upstream.
+        run: |
+          sed -i.bak '/electron_mirror/d;/electron_builder_binaries_mirror/d' .npmrc
+          cat .npmrc
+
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build & Release
+      - name: Build & Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        run: pnpm run release -- --win --x64
+          # No signing certificate is configured; without this, electron-builder
+          # tries to sign with any identity it finds in the runner keychain.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        # No platform flag: electron-builder targets the host platform, which is
+        # what each matrix leg is for.
+        run: pnpm run release

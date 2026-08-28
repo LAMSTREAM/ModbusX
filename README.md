@@ -46,7 +46,15 @@ pnpm build:mac
 Linux:
 pnpm build:linux
 
-Packaged application outputs will be placed in the corresponding dist or release folder.
+Each command builds for the host platform only; macOS builds require macOS.
+Outputs are written to `dist/`.
+
+Releases are produced by CI: pushing a `v*` tag builds Windows, macOS and Linux
+in parallel and uploads the artifacts to the matching GitHub release. The tag
+must match the `version` in `package.json` or the job fails.
+
+Windows and macOS builds are **unsigned**. macOS users will need to bypass
+Gatekeeper on first launch.
 
 ---
 
@@ -56,7 +64,7 @@ Packaged application outputs will be placed in the corresponding dist or release
 .
 ├── .github/               GitHub Actions workflows
 ├── .vscode/               Editor configuration
-├── build/                 Build configuration files
+├── build/                 Packaging inputs (icons/, entitlements)
 ├── src/                   Source code (Electron + React)
 ├── package.json           Project configuration
 ├── tsconfig.json          TypeScript configuration

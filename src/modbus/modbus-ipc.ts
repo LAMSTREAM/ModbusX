@@ -33,3 +33,8 @@ ipcMain.handle('modbus-list-ports', async () => {
   const ports = await SerialPort.list()
   return ports.map((port) => ({ path: port.path, manufacturer: port.manufacturer }))
 })
+
+/** Release the port/socket on shutdown. Safe to call when not connected. */
+export async function closeModbus(): Promise<void> {
+  await client.disconnect()
+}

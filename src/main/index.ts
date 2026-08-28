@@ -2,6 +2,14 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
+// Linux window icon. Packaged, electron-builder copies it beside the app via
+// `extraResources`; unpackaged, it is read straight from the source tree. It is
+// deliberately not an asar-embedded `?asset` import: BrowserWindow resolves
+// `icon` in native code, which cannot read inside an asar.
+const iconPath = app.isPackaged
+  ? join(process.resourcesPath, 'icon.png')
+  : join(__dirname, '../../resources/icon.png')
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -10,6 +18,9 @@ function createWindow(): void {
     title: 'ModbusX',
     show: false,
     autoHideMenuBar: true,
+    // Windows and macOS take the window icon from the packaged bundle; Linux
+    // does not, so it has to be set explicitly from a shipped file.
+    ...(process.platform === 'linux' ? { icon: iconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -38,8 +49,10 @@ function createWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  // Must match `appId` in electron-builder.yml, otherwise Windows treats the
+  // running app and the installed shortcut as different applications and
+  // taskbar pinning / notifications misbehave.
+  electronApp.setAppUserModelId('com.LAMSTREAM.ModbusX')
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -73,4 +86,25 @@ app.on('window-all-closed', () => {
 // code. You can also put them in separate files and require them here.
 
 // Import Modbus IPC
-void import('../modbus/modbus-ipc')
+const modbusIpc = import('../modbus/modbus-ipc')
+
+// The Modbus layer holds an open serial port or socket. Release it before the
+// process exits, otherwise the OS handle stays held and the port is
+// unavailable to the next launch. This matters most on macOS, where closing
+// the last window does not quit the app, so the port would otherwise stay
+// claimed for the whole session.
+//
+// Electron does not await async `before-quit` listeners, so the quit is
+// deferred explicitly and re-issued once teardown finishes.
+let modbusClosed = false
+app.on('before-quit', (event) => {
+  if (modbusClosed) return
+  event.preventDefault()
+  modbusIpc
+    .then(({ closeModbus }) => closeModbus())
+    .catch((e) => console.warn('Modbus shutdown failed:', e))
+    .finally(() => {
+      modbusClosed = true
+      app.quit()
+    })
+})

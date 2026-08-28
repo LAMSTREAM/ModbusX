@@ -1,7 +1,11 @@
-appId: com.electron.app
+appId: com.LAMSTREAM.ModbusX
 productName: ModbusX
 directories:
   buildResources: build
+# Single 1024x1024 master; electron-builder derives .ico, .icns and the Linux
+# size set from it. Kept under build/icons/ rather than as build/icon.png so the
+# whole authored icon set lives together.
+icon: build/icons/icon.png
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -9,14 +13,37 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+# BrowserWindow's `icon` is read by native code that cannot see inside an asar,
+# so the Linux window icon must exist as a real file on disk. asarUnpack globs
+# proved unreliable here (the entry stayed packed), so the icon is copied out
+# explicitly instead; at runtime it resolves under `process.resourcesPath`.
+# Native .node modules are auto-unpacked by electron-builder, so no asarUnpack
+# entry is needed.
+# Source dir must live OUTSIDE `build/`: electron-builder treats build/ as
+# packaging input (directories.buildResources) and copies nothing out of it,
+# so `from: build/icons` silently produced no files. `from` is also a directory
+# root, not a file path.
+extraResources:
+  - from: resources
+    to: .
 win:
   executableName: ModbusX
+  target:
+    - target: nsis
+      arch: [x64]
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -25,16 +52,29 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${name}-${version}-${arch}.${ext}
 linux:
+  # AppImage and deb only. snap is intentionally excluded: it needs snapcraft on
+  # the build host, which GitHub's ubuntu runners do not provide, and it is the
+  # usual cause of a red Linux release job.
   target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  maintainer: LAMSTREAM <Kyle.wang@accuenergy.com>
+  category: Development
+  desktop:
+    entry:
+      # Serial debugging tools are conventionally discoverable under both.
+      Categories: Development;Utility;
 appImage:
   artifactName: ${name}-${version}.${ext}
+deb:
+  artifactName: ${name}-${version}-${arch}.${ext}
+  # serialport talks to /dev/tty*; udev is what assigns those nodes.
+  depends:
+    - libudev1
 npmRebuild: false
 publish:
   # The "generic" provider is download-only: app-builder-lib's createPublisher
@@ -42,5 +82,7 @@ publish:
   # GitHub release came out empty. owner/repo are intentionally omitted so they
   # resolve from .git/config and survive a repository rename.
   provider: github
-electronDownload:
-  mirror: https://npmmirror.com/mirrors/electron/
+# No electronDownload.mirror here on purpose: .npmrc already sets
+# electron_mirror / electron_builder_binaries_mirror for local development, and
+# a value in this file could not be overridden from CI. Release CI strips those
+# .npmrc lines so runners fetch from upstream instead.
