@@ -12,6 +12,8 @@ export interface SettingsBarProps {
   settings: ConnectionSettings
   updateInfo: <K extends keyof ConnectionSettings>(k: K, v: ConnectionSettings[K]) => void
   ports: { path: string }[]
+  /** False until the first scan resolves — lets the menu say "not scanned yet". */
+  portsScanned: boolean
   scanPorts: () => void
   connected: boolean
   sending: boolean
@@ -23,6 +25,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
   settings,
   updateInfo,
   ports,
+  portsScanned,
   scanPorts,
   connected,
   sending,
@@ -71,19 +74,30 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
           <div className="flex flex-col">
             <Label className={LABEL}>Serial Port &amp; Baud</Label>
             <div className="flex gap-2">
+              {/* With no items at all, Radix still mounts the popper — it has
+                  nothing to measure against, so it lands as an empty sliver in
+                  the top-left corner of the window. An explicit empty state
+                  gives it content to position, and tells the user which case
+                  they are in. */}
               <Select
-                value={settings.serialPort}
+                value={settings.serialPort || undefined}
                 onValueChange={(v) => updateInfo('serialPort', v)}
               >
                 <SelectTrigger className={cn(CONTROL, 'min-w-[150px] flex-1')}>
-                  <SelectValue />
+                  <SelectValue placeholder={portsScanned ? 'No ports found' : 'Scanning…'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {ports.map((p) => (
-                    <SelectItem key={p.path} value={p.path}>
-                      {p.path}
-                    </SelectItem>
-                  ))}
+                  {ports.length > 0 ? (
+                    ports.map((p) => (
+                      <SelectItem key={p.path} value={p.path}>
+                        {p.path}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="px-2 py-1.5 text-[13px] text-muted-foreground">
+                      {portsScanned ? 'No serial ports found' : 'Scanning…'}
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
               {/* The glyph stays a glyph. Swapping in a lucide RefreshCw would

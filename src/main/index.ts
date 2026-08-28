@@ -18,6 +18,12 @@ function createWindow(): void {
     title: 'ModbusX',
     show: false,
     autoHideMenuBar: true,
+    // Frameless: the title bar is drawn by the renderer so it follows the app's
+    // own theme instead of the OS chrome. macOS keeps its traffic lights via
+    // hiddenInset, which is the platform-idiomatic equivalent.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const }
+      : { frame: false }),
     // Windows and macOS take the window icon from the packaged bundle; Linux
     // does not, so it has to be set explicitly from a shipped file.
     ...(process.platform === 'linux' ? { icon: iconPath } : {}),
@@ -30,6 +36,14 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
+
+  // The renderer's title bar mirrors this, so it has to be told when the state
+  // changes by any other route — double-clicking the drag region, Win+Up, or a
+  // window snap.
+  const emitMaximized = (): void =>
+    mainWindow.webContents.send('window:maximized-changed', mainWindow.isMaximized())
+  mainWindow.on('maximize', emitMaximized)
+  mainWindow.on('unmaximize', emitMaximized)
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -63,6 +77,23 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+
+  // Window controls for the renderer-drawn title bar. Resolved from the sender
+  // rather than a captured reference so they stay correct if a second window
+  // is ever created.
+  const senderWindow = (
+    e: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent
+  ): BrowserWindow | null => BrowserWindow.fromWebContents(e.sender)
+
+  ipcMain.on('window:minimize', (e) => senderWindow(e)?.minimize())
+  ipcMain.on('window:toggle-maximize', (e) => {
+    const w = senderWindow(e)
+    if (!w) return
+    if (w.isMaximized()) w.unmaximize()
+    else w.maximize()
+  })
+  ipcMain.on('window:close', (e) => senderWindow(e)?.close())
+  ipcMain.handle('window:is-maximized', (e) => senderWindow(e)?.isMaximized() ?? false)
 
   createWindow()
 

@@ -21,19 +21,24 @@
 
 const PORT = Number(process.env.CDP_PORT || 9222)
 
-// Fixed selector list. Indices are validated once at Step 0 and then frozen.
+// Fixed selector list.
+//
+// Re-anchored when the frameless title bar landed: the sections moved one level
+// down, under a padded content wrapper below the <header>. `#root > div > div`
+// is that wrapper, and the four sections are its div children.
+const CONTENT = '#root > div > div'
 const SELECTORS = [
-  ['root-wrapper', '#root > div'],
-  ['slave-id-input', '#root > div > div:nth-of-type(1) > div:nth-of-type(2) input'],
-  ['data-monitor-panel', '#root > div > div:nth-of-type(3)'],
-  ['grid-container', '#root > div > div:nth-of-type(3) > div:nth-of-type(2) > div'],
+  ['root-wrapper', CONTENT],
+  ['slave-id-input', `${CONTENT} > div:nth-of-type(1) > div:nth-of-type(2) input`],
+  ['data-monitor-panel', `${CONTENT} > div:nth-of-type(3)`],
+  ['grid-container', `${CONTENT} > div:nth-of-type(3) > div:nth-of-type(2) > div`],
   [
     'first-register-cell',
-    '#root > div > div:nth-of-type(3) > div:nth-of-type(2) > div > div:first-child'
+    `${CONTENT} > div:nth-of-type(3) > div:nth-of-type(2) > div > div:first-child`
   ],
   [
     'first-log-direction',
-    '#root > div > div:nth-of-type(4) > div:nth-of-type(2) > div:first-child > span:nth-of-type(2)'
+    `${CONTENT} > div:nth-of-type(4) > div:nth-of-type(2) > div:first-child > span:nth-of-type(2)`
   ]
 ]
 

@@ -102,23 +102,26 @@
    [data-theme='dark'] so an explicit choice wins in both directions. Every
    colour must be defined here on bare :root, never only inside a media query. */
 :root {
-  --background: #ffffff;
+  /* Zinc, softened: the page sits on zinc-50 rather than pure white and the
+     panels are white on top of it. Pure white everywhere read as harsh, and
+     left the panels indistinguishable from the page behind them. */
+  --background: #fafafa;
   --muted: #f4f4f5;
   --secondary: #f4f4f5;
   --accent: #f4f4f5;
-  --card: #fafafa;
-  --cell: #f8f9fa;
+  --card: #ffffff;
+  --cell: #f4f4f5;
 
   --border: #e4e4e7;
   --input: #e4e4e7;
   --border-hover: #d4d4d8;
 
-  --foreground: #18181b;
+  --foreground: #27272a;
   --muted-foreground: #71717a;
   --faint: #a1a1aa;
 
-  --primary: #18181b;
-  --primary-foreground: #ffffff;
+  --primary: #27272a;
+  --primary-foreground: #fafafa;
 
   --action: #2563eb;
   --action-foreground: #ffffff;
@@ -162,23 +165,26 @@
 /* Zinc-based dark palette, mirroring the light token roles one-for-one. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --background: #09090b;
-    --muted: #18181b;
-    --secondary: #18181b;
-    --accent: #18181b;
-    --card: #131316;
-    --cell: #1c1c20;
+    /* Soft dark grey, not near-black. #09090b was effectively pure black:
+       high-contrast and tiring. This sits around zinc-850 so panels and cells
+       still separate from the page without the hard edge. */
+    --background: #1b1b1e;
+    --muted: #26262a;
+    --secondary: #26262a;
+    --accent: #26262a;
+    --card: #212125;
+    --cell: #26262a;
 
-    --border: #27272a;
-    --input: #27272a;
-    --border-hover: #3f3f46;
+    --border: #34343a;
+    --input: #34343a;
+    --border-hover: #45454d;
 
-    --foreground: #fafafa;
+    --foreground: #e8e8ea;
     --muted-foreground: #a1a1aa;
-    --faint: #71717a;
+    --faint: #7a7a84;
 
-    --primary: #fafafa;
-    --primary-foreground: #18181b;
+    --primary: #e8e8ea;
+    --primary-foreground: #1b1b1e;
 
     --action: #3b82f6;
     --action-foreground: #ffffff;
@@ -199,28 +205,31 @@
     --rx: #34d399;
 
     --scrollbar: #3f3f46;
-    --scrollbar-hover: #52525b;
+    --scrollbar-hover: #56565f;
   }
 }
 
 :root[data-theme='dark'] {
-  --background: #09090b;
-  --muted: #18181b;
-  --secondary: #18181b;
-  --accent: #18181b;
-  --card: #131316;
-  --cell: #1c1c20;
+  /* Soft dark grey, not near-black. #09090b was effectively pure black:
+     high-contrast and tiring. This sits around zinc-850 so panels and cells
+     still separate from the page without the hard edge. */
+  --background: #1b1b1e;
+  --muted: #26262a;
+  --secondary: #26262a;
+  --accent: #26262a;
+  --card: #212125;
+  --cell: #26262a;
 
-  --border: #27272a;
-  --input: #27272a;
-  --border-hover: #3f3f46;
+  --border: #34343a;
+  --input: #34343a;
+  --border-hover: #45454d;
 
-  --foreground: #fafafa;
+  --foreground: #e8e8ea;
   --muted-foreground: #a1a1aa;
-  --faint: #71717a;
+  --faint: #7a7a84;
 
-  --primary: #fafafa;
-  --primary-foreground: #18181b;
+  --primary: #e8e8ea;
+  --primary-foreground: #1b1b1e;
 
   --action: #3b82f6;
   --action-foreground: #ffffff;
@@ -241,7 +250,7 @@
   --rx: #34d399;
 
   --scrollbar: #3f3f46;
-  --scrollbar-hover: #52525b;
+  --scrollbar-hover: #56565f;
 }
 
 /* This layer comes after Tailwind's Preflight, so on source order within
@@ -266,7 +275,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    background: radial-gradient(circle at 50% 30%, var(--muted) 0%, var(--background) 100%);
+    background: var(--background);
 
     min-width: 100vw;
 

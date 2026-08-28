@@ -47,12 +47,12 @@ function probe(expected) {
   void document.documentElement.offsetHeight
 
   const bg = (el) => (el ? getComputedStyle(el).backgroundColor : null)
-  const settings = document.querySelector('#root > div > div:nth-of-type(1)')
+  const settings = document.querySelector('#root > div > div > div:nth-of-type(1)')
   const buttons = settings ? [...settings.querySelectorAll('button')] : []
 
   const samples = {}
   const cell = document.querySelector(
-    '#root > div > div:nth-of-type(3) > div:nth-of-type(2) > div > div:first-child'
+    '#root > div > div > div:nth-of-type(3) > div:nth-of-type(2) > div > div:first-child'
   )
   if (cell) samples['grid cell (idle)'] = bg(cell)
 
@@ -129,11 +129,11 @@ async function main() {
   // Expected opaque values, derived from the Step 5 token table. If Step 5 ever
   // adjusts a dark value, these move with it.
   const EXPECTED = {
-    'grid cell (idle)': 'rgb(28, 28, 32)', // --cell  #1c1c20
-    'text Input (idle)': 'rgb(9, 9, 11)', // --background #09090b
-    'scan button (idle)': 'rgb(28, 28, 32)', // --cell via CONTROL_QUIET
-    'SelectTrigger (idle)': 'rgb(9, 9, 11)',
-    'ThemeToggle (idle)': 'rgb(9, 9, 11)'
+    'grid cell (idle)': 'rgb(38, 38, 42)', // --cell  #26262a
+    'text Input (idle)': 'rgb(27, 27, 30)', // --background #1b1b1e
+    'scan button (idle)': 'rgb(38, 38, 42)', // --cell via CONTROL_QUIET
+    'SelectTrigger (idle)': 'rgb(27, 27, 30)',
+    'ThemeToggle (idle)': 'rgb(27, 27, 30)'
   }
 
   const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()

@@ -1,4 +1,5 @@
 import React from 'react'
+import { ChevronDown } from 'lucide-react'
 import type { LogItem } from '../lib/modbus-config'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
@@ -39,41 +40,53 @@ const LogPane: React.FC<LogPaneProps> = ({
         // bg-card, which is the Data Monitor panel's fill, not this one's.
         // Without the override the Logs panel would silently change colour.
         'flex flex-col gap-0 overflow-hidden rounded-lg border border-border bg-background py-0 shadow-none transition-[flex]',
-        showLogs ? 'flex-1' : 'flex-[0_0_32px]'
+        showLogs ? 'flex-1' : 'flex-[0_0_36px]'
       )}
     >
       <div
         className={cn(
-          'flex h-8 cursor-default items-center justify-between bg-muted px-3',
+          'flex h-9 shrink-0 cursor-default items-center justify-between gap-3 bg-muted pr-1 pl-3',
           showLogs && 'border-b'
         )}
       >
-        <span className="text-[11px] font-bold text-foreground">
-          LOGS {logs.length > 0 && !showLogs && `— ${logs[logs.length - 1].msg}`}
-        </span>
-        <div className="flex items-center gap-2">
-          {showLogs && (
-            <Label className="mr-1.5 flex cursor-pointer items-center gap-1 text-[11px] leading-normal font-semibold text-muted-foreground">
-              {/* onCheckedChange yields boolean | 'indeterminate'; coerce, or a
-                  non-boolean reaches SavedConfig and AC12's shape check fails. */}
-              <Checkbox
-                checked={showRawLog}
-                onCheckedChange={(v) => setShowRawLog(Boolean(v))}
-                className="size-3.5"
-              />
-              Show Raw
-            </Label>
+        <span className="truncate text-[11px] font-bold tracking-wide text-foreground">
+          LOGS
+          {logs.length > 0 && !showLogs && (
+            <span className="ml-2 font-normal text-muted-foreground">
+              {logs[logs.length - 1].msg}
+            </span>
           )}
+        </span>
 
+        {/* One flex row owns the spacing. Previously each control carried its
+            own margin and its own height, so the gaps between them did not
+            match and the collapse arrow sat flush against the panel edge. Now
+            all three are 28px high, share one gap, and hover identically. */}
+        <div className="flex shrink-0 items-center gap-1">
           {showLogs && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClear}
-              className="h-auto p-0 text-[11px] text-muted-foreground hover:bg-transparent"
-            >
-              Clear
-            </Button>
+            <>
+              <Label className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[11px] leading-normal font-semibold text-muted-foreground transition-colors hover:bg-background hover:text-foreground">
+                {/* onCheckedChange yields boolean | 'indeterminate'; coerce, or
+                    a non-boolean reaches SavedConfig and AC12's shape check
+                    fails. */}
+                <Checkbox
+                  checked={showRawLog}
+                  onCheckedChange={(v) => setShowRawLog(Boolean(v))}
+                  className="size-3.5"
+                />
+                Show Raw
+              </Label>
+
+              <Button
+                variant="ghost"
+                onClick={onClear}
+                className="h-7 rounded-md px-2 text-[11px] font-semibold text-muted-foreground hover:bg-background hover:text-foreground"
+              >
+                Clear
+              </Button>
+
+              <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+            </>
           )}
 
           {/* Independent click area — collapsing must not be triggered by the
@@ -81,10 +94,15 @@ const LogPane: React.FC<LogPaneProps> = ({
           <Button
             variant="ghost"
             size="icon"
+            aria-label={showLogs ? 'Collapse log pane' : 'Expand log pane'}
             onClick={() => setShowLogs(!showLogs)}
-            className="size-6 text-[10px] text-faint hover:bg-transparent"
+            className="size-7 rounded-md text-muted-foreground hover:bg-background hover:text-foreground"
           >
-            {showLogs ? '▼' : '▲'}
+            <ChevronDown
+              size={14}
+              strokeWidth={2.5}
+              className={cn('transition-transform duration-200', !showLogs && '-rotate-180')}
+            />
           </Button>
         </div>
       </div>

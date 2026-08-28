@@ -81,7 +81,7 @@ function checks() {
   for (const t of ['light', 'dark']) {
     setTheme(t)
     const brandDot = document.querySelector('header svg circle')
-    const rows = [...document.querySelectorAll('#root > div > div:nth-of-type(4) span')]
+    const rows = [...document.querySelectorAll('#root > div > div > div:nth-of-type(4) span')]
     const dirs = rows.filter((s) => /^(TX|RX|SYS)$/.test(s.textContent.trim()))
     const seen = {}
     for (const d of dirs) seen[d.textContent.trim()] = getComputedStyle(d).color

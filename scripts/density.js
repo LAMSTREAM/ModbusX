@@ -40,7 +40,7 @@ function send(ws, method, params = {}) {
 }
 
 function measure() {
-  const GRID = '#root > div > div:nth-of-type(3) > div:nth-of-type(2) > div'
+  const GRID = '#root > div > div > div:nth-of-type(3) > div:nth-of-type(2) > div'
   const grid = document.querySelector(GRID)
   if (!grid) return { error: `grid not found: ${GRID}` }
 

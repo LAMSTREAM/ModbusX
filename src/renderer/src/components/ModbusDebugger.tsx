@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ConnectionSettings, ModbusRawLog } from '../../../modbus/modbus'
-import BrandMark from './BrandMark'
-import ThemeToggle from './ThemeToggle'
+import TitleBar from './TitleBar'
 import RegisterBlock from './RegisterBlock'
 import SettingsBar from './SettingsBar'
 import CommandBar from './CommandBar'
@@ -45,6 +44,9 @@ const ModbusDebugger: React.FC = () => {
   // State
   const [settings, setSettings] = useState<ConnectionSettings>(initialConfig.settings)
   const [ports, setPorts] = useState<{ path: string }[]>([])
+  // Distinguishes "not scanned yet" from "scanned and found nothing", so the
+  // dropdown can say which.
+  const [portsScanned, setPortsScanned] = useState(false)
   const [connected, setConnected] = useState(false)
   const [sending, setSending] = useState(false)
   const [standardFc, setStandardFc] = useState<string>(initialConfig.standardFc || '3')
@@ -266,15 +268,27 @@ const ModbusDebugger: React.FC = () => {
 
   // --- Actions ---
 
-  const scanPorts = async () => {
+  const scanPorts = useCallback(async () => {
     try {
       const list = await window.modbusAPI.scanSerialPorts()
       setPorts(list)
+      setPortsScanned(true)
       if (list.length > 0 && !settings.serialPort) updateInfo('serialPort', list[0].path)
     } catch (e: unknown) {
+      setPortsScanned(true)
       addLog('SYS', 'Scan Error', errMsg(e))
     }
-  }
+    // Depends on `settings.serialPort` alone, not the whole settings object:
+    // the port is read only to decide whether to seed a default, and widening
+    // the dependency would re-create this on every keystroke in the form.
+  }, [settings.serialPort, addLog])
+
+  // Scan whenever RTU becomes the active mode — on launch if the saved config
+  // is RTU, and on every switch back to it. Without this the port dropdown is
+  // empty until the user thinks to press the scan button.
+  useEffect(() => {
+    if (settings.mode === 'RTU') void scanPorts()
+  }, [settings.mode, scanPorts])
 
   const handleConnect = async () => {
     if (busyRef.current) return
@@ -466,75 +480,70 @@ const ModbusDebugger: React.FC = () => {
     handleCellEdit
   ])
   return (
-    <div className="flex h-full w-full flex-col gap-4 bg-background p-5">
-      {/* 0. App header — identity on the left, app-level chrome on the right.
-          Theme belongs here rather than in the connection form: it is not a
-          Modbus setting. */}
-      <header className="flex items-center justify-between gap-3 border-b pb-3">
-        <div className="flex items-center gap-2">
-          <BrandMark size={18} />
-          <span className="text-[13px] font-semibold tracking-[0.01em] text-foreground">
-            ModbusX
-          </span>
-        </div>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
-      </header>
+    <div className="flex h-full w-full flex-col bg-background">
+      {/* 0. Title bar — the window is frameless, so this is the app's own
+          chrome: drag region, identity, theme toggle and window controls. */}
+      <TitleBar theme={theme} onToggleTheme={toggleTheme} />
 
-      {/* 1. Settings */}
-      <SettingsBar
-        settings={settings}
-        updateInfo={updateInfo}
-        ports={ports}
-        scanPorts={scanPorts}
-        connected={connected}
-        sending={sending}
-        onConnect={handleConnect}
-        preventEnter={preventEnter}
-      />
+      {/* Everything below the title bar keeps the page padding. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
+        {/* 1. Settings */}
+        <SettingsBar
+          settings={settings}
+          updateInfo={updateInfo}
+          ports={ports}
+          portsScanned={portsScanned}
+          scanPorts={scanPorts}
+          connected={connected}
+          sending={sending}
+          onConnect={handleConnect}
+          preventEnter={preventEnter}
+        />
 
-      {/* 2. Commands */}
-      <CommandBar
-        customFcMode={customFcMode}
-        setCustomFcMode={setCustomFcMode}
-        standardFc={standardFc}
-        setStandardFc={setStandardFc}
-        customFcValue={customFcValue}
-        setCustomFcValue={setCustomFcValue}
-        address={address}
-        setAddress={setAddress}
-        countParam={countParam}
-        setCountParam={setCountParam}
-        autoRead={autoRead}
-        setAutoRead={setAutoRead}
-        addrFormat={addrFormat}
-        toggleAddrFormat={toggleAddrFormat}
-        effectiveFc={effectiveFc}
-        connected={connected}
-        sending={sending}
-        onCommand={handleCommand}
-        onMainAction={handleMainAction}
-      />
+        {/* 2. Commands */}
+        <CommandBar
+          customFcMode={customFcMode}
+          setCustomFcMode={setCustomFcMode}
+          standardFc={standardFc}
+          setStandardFc={setStandardFc}
+          customFcValue={customFcValue}
+          setCustomFcValue={setCustomFcValue}
+          address={address}
+          setAddress={setAddress}
+          countParam={countParam}
+          setCountParam={setCountParam}
+          autoRead={autoRead}
+          setAutoRead={setAutoRead}
+          addrFormat={addrFormat}
+          toggleAddrFormat={toggleAddrFormat}
+          effectiveFc={effectiveFc}
+          connected={connected}
+          sending={sending}
+          onCommand={handleCommand}
+          onMainAction={handleMainAction}
+        />
 
-      {/* 3. Data Monitor — `gridContent` is passed as a child rather than built
-          inside DataMonitor, for two reasons. Building it there would re-derive
-          the whole grid whenever the format-toggle row re-renders; and a
-          memoized ELEMENT passed as a child keeps its referential identity, so
-          React bails out of reconciling the entire grid subtree when this
-          parent re-renders for an unrelated reason. Do not "tidy" this inward. */}
-      <DataMonitor dataFormat={dataFormat} setDataFormat={setDataFormat} expanded={showLogs}>
-        {gridContent}
-      </DataMonitor>
+        {/* 3. Data Monitor — `gridContent` is passed as a child rather than built
+            inside DataMonitor, for two reasons. Building it there would re-derive
+            the whole grid whenever the format-toggle row re-renders; and a
+            memoized ELEMENT passed as a child keeps its referential identity, so
+            React bails out of reconciling the entire grid subtree when this
+            parent re-renders for an unrelated reason. Do not "tidy" this inward. */}
+        <DataMonitor dataFormat={dataFormat} setDataFormat={setDataFormat} expanded={showLogs}>
+          {gridContent}
+        </DataMonitor>
 
-      {/* 4. Logs */}
-      <LogPane
-        logs={logs}
-        showLogs={showLogs}
-        setShowLogs={setShowLogs}
-        showRawLog={showRawLog}
-        setShowRawLog={setShowRawLog}
-        onClear={() => setLogs([])}
-        listRef={logListRef}
-      />
+        {/* 4. Logs */}
+        <LogPane
+          logs={logs}
+          showLogs={showLogs}
+          setShowLogs={setShowLogs}
+          showRawLog={showRawLog}
+          setShowRawLog={setShowRawLog}
+          onClear={() => setLogs([])}
+          listRef={logListRef}
+        />
+      </div>
     </div>
   )
 }
