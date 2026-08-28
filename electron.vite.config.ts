@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   main: {
@@ -20,6 +21,8 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [react()]
+    // Renderer only. `main` and `preload` are Node targets built with
+    // externalizeDepsPlugin; Tailwind has no business in either.
+    plugins: [react(), tailwindcss()]
   }
 })
