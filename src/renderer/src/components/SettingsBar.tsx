@@ -73,7 +73,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
           onKeyDown={preventEnter}
         />
       </div>
-      <div className="shrink-0 grow-0">
+      <div className="min-w-[300px] flex-1">
         {settings.mode === 'RTU' ? (
           <div className="flex flex-col">
             <Label className={LABEL}>Serial Port &amp; Baud</Label>
@@ -87,7 +87,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
                 value={settings.serialPort || undefined}
                 onValueChange={(v) => updateInfo('serialPort', v)}
               >
-                <SelectTrigger className={cn(CONTROL, 'w-[132px] shrink-0 grow-0')}>
+                <SelectTrigger className={cn(CONTROL, 'min-w-[132px] flex-1')}>
                   <SelectValue placeholder={portsScanned ? 'No ports found' : 'Scanning…'} />
                 </SelectTrigger>
                 <SelectContent>
@@ -145,7 +145,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
             <Label className={LABEL}>IP Address &amp; Port</Label>
             <div className="flex gap-2">
               <Input
-                className={cn(CONTROL, 'w-[172px] shrink-0 grow-0')}
+                className={cn(CONTROL, 'min-w-[140px] flex-1')}
                 value={settings.ipAddress}
                 onChange={(e) => updateInfo('ipAddress', e.target.value)}
                 onKeyDown={preventEnter}
@@ -164,31 +164,34 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
       {/* --primary's only consumer in the whole app. shadcn's
           disabled:opacity-50 supersedes the old opacity: 0.7 — accepted drift,
           since pixel identity is an explicit Non-Goal. */}
-      {/* Status is otherwise only inferable from the button's label, which
-          cannot distinguish "never connected" from "dropped with an error". */}
-      <span
-        title={connError ?? (connected ? 'Connected' : 'Not connected')}
-        className="mb-2.5 flex shrink-0 items-center gap-1.5 self-end text-[11px] font-semibold text-muted-foreground"
-      >
+      {/* Status and Connect travel together at the right edge. The group
+          aligns to the row's baseline like the inputs do, and centres the dot
+          against the button rather than the (taller) labelled fields. */}
+      <div className="flex shrink-0 items-center gap-3 self-end">
         <span
-          aria-hidden="true"
+          title={connError ?? (connected ? 'Connected' : 'Not connected')}
+          className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground"
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              'size-2 rounded-full',
+              connected ? 'bg-success' : connError ? 'bg-destructive' : 'bg-faint'
+            )}
+          />
+          {connected ? 'Online' : connError ? 'Error' : 'Offline'}
+        </span>
+        <Button
+          onClick={onConnect}
+          disabled={sending}
           className={cn(
-            'size-2 rounded-full',
-            connected ? 'bg-success' : connError ? 'bg-destructive' : 'bg-faint'
+            'w-30 font-semibold',
+            connected && 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
           )}
-        />
-        {connected ? 'Online' : connError ? 'Error' : 'Offline'}
-      </span>
-      <Button
-        onClick={onConnect}
-        disabled={sending}
-        className={cn(
-          'w-30 font-semibold',
-          connected && 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-        )}
-      >
-        {sending ? '...' : connected ? 'Disconnect' : 'Connect'}
-      </Button>
+        >
+          {sending ? '...' : connected ? 'Disconnect' : 'Connect'}
+        </Button>
+      </div>
     </div>
   )
 }
