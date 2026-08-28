@@ -26,6 +26,13 @@ import {
   parseFC
 } from '../lib/modbus-format'
 
+// Two COMPLETE literal strings, never a template. Tailwind v4 scans source
+// text and will not emit a class it cannot see spelled out, so building
+// `minmax(${colWidth},1fr)` from a variable would silently produce no rule at
+// all. This is the mechanism AC7 rests on.
+const GRID_16 = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(70px,1fr))]'
+const GRID_32 = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))]'
+
 // `window.modbusAPI` is declared once, globally, in modbus.d.ts as `IModbusAPI`.
 // Re-declaring a structurally different shape here made the two augmentations
 // disagree (TS2717) and collapsed `subscribeRawLog` to `never` at its call site.
@@ -409,33 +416,17 @@ const ModbusDebugger: React.FC = () => {
   const gridContent = useMemo(() => {
     if (!monitorData) {
       return (
-        <div
-          style={{
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--c-text-mute)'
-          }}
-        >
-          <div style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.3 }}>⊞</div>
-          <div style={{ fontSize: '13px' }}>No Data Available</div>
+        <div className="flex h-full flex-col items-center justify-center text-faint">
+          <div className="mb-3 text-[32px] opacity-30">⊞</div>
+          <div className="text-[13px]">No Data Available</div>
         </div>
       )
     }
 
     const is32Bit = dataFormat === 'FLOAT' || dataFormat === 'UINT32'
-    const colWidth = is32Bit ? '140px' : '70px'
 
     return (
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(auto-fill, minmax(${colWidth}, 1fr))`,
-          gap: '8px'
-        }}
-      >
+      <div className={is32Bit ? GRID_32 : GRID_16}>
         {monitorData.values.map((val, idx) => {
           if (is32Bit && idx % 2 !== 0) return null
           const currentAddr = monitorData.startAddr + idx

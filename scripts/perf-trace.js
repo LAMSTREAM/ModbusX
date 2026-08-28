@@ -131,25 +131,37 @@ async function main() {
     ws.addEventListener('error', () => rej(new Error('CDP socket error')))
   })
 
-  // Force the page active first: a hidden window throttles rAF to ~1Hz and the
-  // whole measurement becomes meaningless.
+  // A hidden window throttles rAF to ~1Hz, which would make the whole
+  // measurement meaningless. Forcing the lifecycle active is not reliably
+  // sticky here — applying the metrics override, or the window losing focus,
+  // can flip it back — so re-assert and poll rather than checking once.
   await send(ws, 'Page.enable')
-  await send(ws, 'Page.setWebLifecycleState', { state: 'active' })
-  await send(ws, 'Emulation.setDeviceMetricsOverride', {
-    width: vw,
-    height: vh,
-    deviceScaleFactor: 1,
-    mobile: false
-  })
-  await new Promise((r) => setTimeout(r, 500))
 
-  const vis = await send(ws, 'Runtime.evaluate', {
-    expression: 'document.visibilityState',
-    returnByValue: true
-  })
-  if (vis.result.value !== 'visible') {
+  // ORDER IS LOAD-BEARING, and it is the same rule screenshot.js needs:
+  // setWebLifecycleState must be applied BEFORE the metrics override. Applying
+  // the override first leaves the page reporting 'hidden' no matter how many
+  // times the lifecycle is re-asserted afterwards.
+  let visible = false
+  for (let attempt = 1; attempt <= 6 && !visible; attempt++) {
+    await send(ws, 'Page.setWebLifecycleState', { state: 'active' })
+    await send(ws, 'Emulation.setDeviceMetricsOverride', {
+      width: vw,
+      height: vh,
+      deviceScaleFactor: 1,
+      mobile: false
+    })
+    await new Promise((r) => setTimeout(r, 600))
+    const vis = await send(ws, 'Runtime.evaluate', {
+      expression: 'document.visibilityState',
+      returnByValue: true
+    })
+    visible = vis.result.value === 'visible'
+    if (!visible) console.error(`perf-trace: page still hidden (attempt ${attempt}); re-asserting`)
+  }
+  if (!visible) {
     console.error(
-      `perf-trace: page is '${vis.result.value}', not visible — rAF is throttled and the numbers would be meaningless.`
+      'perf-trace: page will not become visible — rAF is throttled and the numbers would be' +
+        ' meaningless. Restore/focus the app window and retry.'
     )
     process.exit(1)
   }

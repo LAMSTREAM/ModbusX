@@ -1,6 +1,10 @@
 import React from 'react'
 import type { LogItem } from '../lib/modbus-config'
-import { clearBtnStyle } from './section-styles'
+import { Button } from './ui/button'
+import { Card } from './ui/card'
+import { Checkbox } from './ui/checkbox'
+import { Label } from './ui/label'
+import { cn } from '../lib/utils'
 
 export interface LogPaneProps {
   logs: LogItem[]
@@ -29,118 +33,82 @@ const LogPane: React.FC<LogPaneProps> = ({
   listRef
 }) => {
   return (
-    <div
-      style={{
-        flex: showLogs ? 1 : '0 0 32px',
-        transition: 'flex 0.3s',
-        border: '1px solid var(--c-border)',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--c-bg)'
-      }}
+    <Card
+      className={cn(
+        // bg-background is explicit and load-bearing: Card defaults to bg-card,
+        // which maps from --c-bg-mute and belongs to the Data Monitor panel
+        // only. This panel was var(--c-bg). Without the override it would
+        // silently change colour.
+        'flex flex-col gap-0 overflow-hidden rounded-lg border border-border bg-background py-0 shadow-none transition-[flex]',
+        showLogs ? 'flex-1' : 'flex-[0_0_32px]'
+      )}
     >
-      {/* Header Bar: Click disabled on container */}
       <div
-        style={{
-          padding: '0 12px',
-          height: '32px',
-          background: 'var(--c-bg-sub)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: showLogs ? '1px solid var(--c-border)' : 'none',
-          cursor: 'default'
-        }}
+        className={cn(
+          'flex h-8 cursor-default items-center justify-between bg-muted px-3',
+          showLogs && 'border-b'
+        )}
       >
-        <span style={{ color: 'var(--c-text)', fontSize: '11px', fontWeight: 700 }}>
+        <span className="text-[11px] font-bold text-foreground">
           LOGS {logs.length > 0 && !showLogs && `— ${logs[logs.length - 1].msg}`}
         </span>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {/* Show Raw Toggle */}
+        <div className="flex items-center gap-2">
           {showLogs && (
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: '11px',
-                cursor: 'pointer',
-                color: 'var(--c-text-sub)',
-                fontWeight: 600,
-                marginRight: '6px'
-              }}
-            >
-              <input
-                type="checkbox"
+            <Label className="mr-1.5 flex cursor-pointer items-center gap-1 text-[11px] leading-normal font-semibold text-muted-foreground">
+              {/* onCheckedChange yields boolean | 'indeterminate'; coerce, or a
+                  non-boolean reaches SavedConfig and AC12's shape check fails. */}
+              <Checkbox
                 checked={showRawLog}
-                onChange={(e) => setShowRawLog(e.target.checked)}
-                style={{ margin: 0, cursor: 'pointer' }}
+                onCheckedChange={(v) => setShowRawLog(Boolean(v))}
+                className="size-3.5"
               />
               Show Raw
-            </label>
+            </Label>
           )}
 
-          {/* Reverted Clear Button Style */}
           {showLogs && (
-            <button onClick={onClear} style={clearBtnStyle}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClear}
+              className="h-auto p-0 text-[11px] text-muted-foreground hover:bg-transparent"
+            >
               Clear
-            </button>
+            </Button>
           )}
 
-          {/* Arrow Toggle: Independent Click Area */}
-          <div
+          {/* Independent click area — collapsing must not be triggered by the
+              header bar itself. */}
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setShowLogs(!showLogs)}
-            style={{
-              width: '24px',
-              height: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              borderRadius: '4px',
-              userSelect: 'none'
-            }}
+            className="size-6 text-[10px] text-faint hover:bg-transparent"
           >
-            <span style={{ fontSize: '10px', color: 'var(--c-text-mute)' }}>
-              {showLogs ? '▼' : '▲'}
-            </span>
-          </div>
+            {showLogs ? '▼' : '▲'}
+          </Button>
         </div>
       </div>
       <div
         ref={listRef}
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '8px 12px',
-          fontFamily: 'monospace',
-          fontSize: '12px'
-        }}
+        className="flex-1 overflow-y-auto px-3 py-2 font-mono text-xs leading-normal"
       >
         {logs.map((l) => (
-          <div key={l.id} style={{ marginBottom: '4px', display: 'flex', gap: '8px' }}>
-            <span style={{ color: 'var(--c-text-mute)', minWidth: '60px' }}>{l.time}</span>
+          <div key={l.id} className="mb-1 flex gap-2">
+            <span className="min-w-[60px] text-faint">{l.time}</span>
             <span
-              style={{
-                fontWeight: 700,
-                minWidth: '24px',
-                color:
-                  l.dir === 'TX'
-                    ? 'var(--c-tx)'
-                    : l.dir === 'RX'
-                      ? 'var(--c-rx)'
-                      : 'var(--c-danger)'
-              }}
+              className={cn(
+                'min-w-6 font-bold',
+                l.dir === 'TX' ? 'text-tx' : l.dir === 'RX' ? 'text-rx' : 'text-destructive'
+              )}
             >
               {l.dir}
             </span>
-            <span style={{ color: 'var(--c-text-sub)' }}>{l.msg}</span>
+            <span className="text-muted-foreground">{l.msg}</span>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   )
 }
 
