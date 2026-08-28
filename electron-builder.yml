@@ -75,6 +75,13 @@ deb:
   # serialport talks to /dev/tty*; udev is what assigns those nodes.
   depends:
     - libudev1
+# No rebuild, and no `postinstall: electron-builder install-app-deps` in
+# package.json either -- do not re-add it. @serialport/bindings-cpp ships N-API
+# prebuilds (node.napi.node) for darwin-x64+arm64, linux-x64/arm64 and win32,
+# and N-API is ABI-stable across Node and Electron, so there is nothing to
+# rebuild. Forcing one drags in node-gyp 9.x, which imports `distutils` and
+# therefore fails outright on Python >= 3.12 -- which is what every current CI
+# runner ships.
 npmRebuild: false
 publish:
   # The "generic" provider is download-only: app-builder-lib's createPublisher
