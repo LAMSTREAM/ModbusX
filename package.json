@@ -4,10 +4,10 @@
   "description": "Electron-based Modbus Application implementation",
   "main": "./out/main/index.js",
   "author": "LAMSTREAM",
-  "homepage": "https://github.com/LAMSTREAM/LAModbus",
+  "homepage": "https://github.com/LAMSTREAM/ModbusX",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LAMSTREAM/LAModbus.git"
+    "url": "git+https://github.com/LAMSTREAM/ModbusX.git"
   },
   "scripts": {
     "format": "prettier --write .",
