@@ -1,6 +1,6 @@
 {
   "name": "ModbusX",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Electron-based Modbus Application implementation",
   "main": "./out/main/index.js",
   "author": "LAMSTREAM",
