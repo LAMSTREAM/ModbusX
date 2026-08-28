@@ -111,7 +111,11 @@ function send(ws, method, params = {}) {
 
 // Runs in the renderer. Returns either the dump or the list of misses, so the
 // hard-error path is decided here rather than by an absent key downstream.
-function collect(selectors, props) {
+function collect(selectors, props, theme) {
+  // Set the theme here rather than inheriting whatever the page was left in.
+  // A dump silently taken in the wrong theme compares dark values against a
+  // light baseline and reports every mapped property as a regression.
+  if (theme) document.documentElement.setAttribute('data-theme', theme)
   const misses = []
   const out = {}
   // Freeze animation. `inputBase` carries `transition: border 0.2s`, so a dump
@@ -148,6 +152,7 @@ function collect(selectors, props) {
     dump: out,
     meta: {
       theme: document.documentElement.dataset.theme ?? null,
+      themeRequested: theme ?? null,
       viewport: `${window.innerWidth}x${window.innerHeight}`,
       gridScrollbarPx: scrollbar
     }
@@ -176,7 +181,9 @@ async function main() {
   // Let layout settle before reading computed styles back.
   await new Promise((r) => setTimeout(r, 600))
 
-  const expression = `(${collect.toString()})(${JSON.stringify(SELECTORS)}, ${JSON.stringify(PROPS)})`
+  // Default to light so a gate run is reproducible regardless of page state.
+  const theme = arg('--theme', 'light')
+  const expression = `(${collect.toString()})(${JSON.stringify(SELECTORS)}, ${JSON.stringify(PROPS)}, ${JSON.stringify(theme)})`
   const res = await send(ws, 'Runtime.evaluate', {
     expression,
     returnByValue: true,

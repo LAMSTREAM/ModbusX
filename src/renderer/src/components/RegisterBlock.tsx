@@ -1,6 +1,41 @@
 import React, { memo, useState } from 'react'
 import type { AddressFormat, DataFormat } from '../lib/modbus-config'
 import { formatAddress, formatValue } from '../lib/modbus-format'
+import { cn } from '../lib/utils'
+
+// Module-level and frozen. The grid renders these hundreds of times per poll,
+// so each string is merged ONCE at module load rather than per render.
+//
+// Never interpolate a per-cell value into any of these. `twMerge` memoizes on
+// the joined string (LRU, ~500 entries); three constants across 200 cells is
+// three cache entries and 197 hits, but interpolating an address or a value
+// would thrash the cache and silently evaporate the mitigation.
+const CELL_BASE =
+  'relative flex min-w-[60px] cursor-default flex-col items-center rounded-sm border px-0.5 py-1 select-none'
+const CELL_IDLE = cn(CELL_BASE, 'border-border bg-cell dark:bg-cell')
+const CELL_EDITING = cn(CELL_BASE, 'border-action bg-background dark:bg-background')
+const CELL_SELECTED = cn(CELL_BASE, 'border-selection-border bg-selection dark:bg-selection')
+
+// A bare <input>, NOT shadcn's <Input> — deviation D-2, signed off by the user.
+// shadcn's Input is a plain <input> plus a cn() call and a data-slot attribute:
+// it contributes nothing the cell needs, and it would execute
+// twMerge(clsx(...)) on every render of every cell. Everything else in this
+// app still uses <Input>.
+//
+// Plain template strings rather than cn(), deliberately: a bare <input> has no
+// base class list to merge against and no two classes here conflict. The
+// CONTROL* constants in lib/ui-density.ts do use cn(), because they layer.
+//
+// `md:text-[Npx]` is not redundant — see Rule 1 in lib/ui-density.ts.
+const CELL_INPUT_BASE =
+  'w-full border-0 bg-transparent p-0 text-center font-mono font-semibold shadow-none outline-none focus:outline-none'
+// `text-action` on the read-only variants is load-bearing, not decoration: the
+// blue tint is how a user tells a read-only cell (UINT32 / FLOAT / ASCII) from
+// an editable one at a glance. Nothing else in the AC set would catch its loss.
+const CELL_INPUT_16 = `${CELL_INPUT_BASE} text-[13px] md:text-[13px] text-foreground`
+const CELL_INPUT_16_RO = `${CELL_INPUT_BASE} pointer-events-none text-[13px] md:text-[13px] text-action`
+const CELL_INPUT_32 = `${CELL_INPUT_BASE} text-[14px] md:text-[14px] text-foreground`
+const CELL_INPUT_32_RO = `${CELL_INPUT_BASE} pointer-events-none text-[14px] md:text-[14px] text-action`
 
 export interface RegisterBlockProps {
   address: number
@@ -77,35 +112,13 @@ const RegisterBlock = memo<RegisterBlockProps>(
         onMouseDown={handleMouseDown}
         onMouseEnter={handleMouseEnter}
         onClick={handleClick}
-        style={{
-          background: isSelected
-            ? 'var(--c-select-bg)'
-            : isEditing
-              ? 'var(--c-bg)'
-              : 'var(--c-bg-cell)',
-          border: isSelected
-            ? '1px solid var(--c-select-border)'
-            : isEditing
-              ? '1px solid var(--c-accent)'
-              : '1px solid var(--c-border)',
-          borderRadius: '4px',
-          padding: '4px 2px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          position: 'relative',
-          minWidth: '60px',
-          cursor: 'default',
-          userSelect: 'none'
-        }}
+        className={isSelected ? CELL_SELECTED : isEditing ? CELL_EDITING : CELL_IDLE}
       >
         <div
-          style={{
-            fontSize: '10px',
-            color: isSelected ? 'var(--c-select-fg)' : 'var(--c-text-mute)',
-            marginBottom: '2px',
-            fontFamily: 'monospace'
-          }}
+          className={cn(
+            'mb-0.5 font-mono text-[10px]',
+            isSelected ? 'text-selection-foreground' : 'text-faint'
+          )}
         >
           {addressLabel}
         </div>
@@ -116,18 +129,15 @@ const RegisterBlock = memo<RegisterBlockProps>(
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           readOnly={isReadOnly}
-          style={{
-            width: '100%',
-            textAlign: 'center',
-            border: 'none',
-            background: 'transparent',
-            fontWeight: 600,
-            color: isEditing ? 'var(--c-text)' : isReadOnly ? 'var(--c-accent)' : 'var(--c-text)',
-            outline: 'none',
-            fontSize: is32Bit ? '14px' : '13px',
-            fontFamily: 'monospace',
-            pointerEvents: isReadOnly ? 'none' : 'auto'
-          }}
+          className={
+            is32Bit
+              ? isReadOnly
+                ? CELL_INPUT_32_RO
+                : CELL_INPUT_32
+              : isReadOnly
+                ? CELL_INPUT_16_RO
+                : CELL_INPUT_16
+          }
         />
       </div>
     )
@@ -145,5 +155,28 @@ const RegisterBlock = memo<RegisterBlockProps>(
 )
 
 RegisterBlock.displayName = 'RegisterBlock'
+
+// Every prop above is either compared by the memo comparator or provably stable.
+// Adding one without classifying it here fails `pnpm typecheck:web`.
+//
+// This is KEY-based on purpose. The obvious value-based form —
+// `RegisterBlockProps extends Compared & Stable ? true : never` — is inert:
+// `extends` is structural subtyping, so a type with an EXTRA property still
+// extends one with fewer. Adding `foo` leaves the conditional resolving to
+// `true` and typecheck passing. It only failed when a prop was REMOVED, the
+// opposite of the failure mode it exists to catch. Here `keyof` picks up the
+// new key, `Exclude` leaves it behind, and the assignment fails. Optional props
+// are caught too, because `keyof` includes them. The tuple wrapping on both
+// sides stops distribution over a union, so two props added at once also fail.
+type Compared = Pick<
+  RegisterBlockProps,
+  'value' | 'nextValue' | 'isSelected' | 'format' | 'address' | 'addrFormat'
+>
+type Stable = Pick<RegisterBlockProps, 'index' | 'onSelectionStart' | 'onSelectionEnter' | 'onEdit'>
+type Unaccounted = Exclude<keyof RegisterBlockProps, keyof Compared | keyof Stable>
+const cellPropsAccountedFor: [Unaccounted] extends [never]
+  ? true
+  : ['UNACCOUNTED PROP:', Unaccounted] = true
+void cellPropsAccountedFor
 
 export default RegisterBlock
