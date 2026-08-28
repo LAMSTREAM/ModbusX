@@ -40,7 +40,7 @@ function send(ws, method, params = {}) {
 }
 
 function measure() {
-  const GRID = '#root > div > div > div:nth-of-type(3) > div:nth-of-type(2) > div'
+  const GRID = '[data-grid-body] > div'
   const grid = document.querySelector(GRID)
   if (!grid) return { error: `grid not found: ${GRID}` }
 
@@ -53,7 +53,7 @@ function measure() {
 
   // "Fully visible" = the cell's box is entirely within the scroll container's
   // client box. The scroll parent is the grid's own scrolling ancestor.
-  let scroller = grid.parentElement
+  let scroller = grid.closest('[data-grid-body]') || grid.parentElement
   while (scroller && scroller.scrollHeight <= scroller.clientHeight + 1) {
     scroller = scroller.parentElement
   }
@@ -72,7 +72,7 @@ function measure() {
 
   // See style-dump.js: an 8px scrollbar moves every track by ~0.5px. Record it
   // so a width delta can be attributed instead of guessed at.
-  const scrollHost = grid.parentElement
+  const scrollHost = grid.closest('[data-grid-body]') || grid.parentElement
   const scrollbarPx = scrollHost ? scrollHost.offsetWidth - scrollHost.clientWidth : null
 
   return {

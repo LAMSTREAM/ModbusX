@@ -1,6 +1,6 @@
 import React from 'react'
 import type { AddressFormat } from '../lib/modbus-config'
-import { parseFC } from '../lib/modbus-format'
+import { parseFC, toWireAddress } from '../lib/modbus-format'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -23,6 +23,9 @@ export interface CommandBarProps {
   setAutoRead: (v: boolean) => void
   addrFormat: AddressFormat
   toggleAddrFormat: () => void
+  /** Display offset; the wire address is `typed - addrBase`. */
+  addrBase: number
+  setAddrBase: (v: number) => void
   effectiveFc: string
   connected: boolean
   sending: boolean
@@ -51,12 +54,41 @@ const CommandBar: React.FC<CommandBarProps> = ({
   setAutoRead,
   addrFormat,
   toggleAddrFormat,
+  addrBase,
+  setAddrBase,
   effectiveFc,
   connected,
   sending,
   onCommand,
   onMainAction
 }) => {
+  // Inline validation. Previously an unparseable address or an over-length
+  // count only surfaced as "Read Error" in the log after a round trip.
+  const wireAddr = toWireAddress(address, addrFormat, addrBase)
+  const count = parseInt(countParam, 10)
+  const isRead = [1, 2, 3, 4].includes(parseFC(effectiveFc))
+
+  const addrError = Number.isNaN(wireAddr)
+    ? `Not a valid ${addrFormat} number`
+    : wireAddr < 0
+      ? `Below the base offset (${addrBase})`
+      : wireAddr > 0xffff
+        ? 'Above 0xFFFF'
+        : null
+
+  // 125 is the protocol ceiling for FC 3/4, not a UI choice: the response's
+  // byte-count field is one byte, and this app sends each read as a single
+  // transaction with no chunking.
+  const countError = Number.isNaN(count)
+    ? 'Not a number'
+    : count < 1
+      ? 'Must be at least 1'
+      : isRead && count > 125
+        ? 'Max 125 per read (protocol limit)'
+        : null
+
+  const invalid = Boolean(addrError) || Boolean(countError)
+
   return (
     <div className={ROW}>
       <div className="shrink-0 grow-0 basis-[220px]">
@@ -94,10 +126,24 @@ const CommandBar: React.FC<CommandBarProps> = ({
         </div>
       </div>
       <div className="flex-[1_1_120px]">
-        <Label className={LABEL}>Address ({addrFormat})</Label>
+        <Label className={LABEL}>
+          Address ({addrFormat})
+          {addrBase !== 0 && (
+            <span className="ml-1.5 font-normal text-muted-foreground">
+              wire {Number.isNaN(wireAddr) ? '—' : wireAddr}
+            </span>
+          )}
+        </Label>
         <div className="flex">
           <Input
-            className={cn(CONTROL, 'w-full font-mono', JOIN_LEFT)}
+            aria-invalid={Boolean(addrError)}
+            title={addrError ?? undefined}
+            className={cn(
+              CONTROL,
+              'w-full font-mono',
+              JOIN_LEFT,
+              addrError && 'border-destructive focus-visible:border-destructive'
+            )}
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onMainAction()}
@@ -113,15 +159,41 @@ const CommandBar: React.FC<CommandBarProps> = ({
             {addrFormat}
           </Button>
         </div>
+        {addrError && <p className="mt-1 text-[11px] text-destructive">{addrError}</p>}
+      </div>
+
+      {/* Base sits beside Address, not with the connection settings: it changes
+          what the number in that field MEANS, which is the same kind of thing
+          as the HEX/DEC toggle. It gets its own caption because unlabelled it
+          reads as an orphan between Address and Count. */}
+      <div className="shrink-0 grow-0 basis-[92px]">
+        <Label className={LABEL} title="The display address that maps to wire register 0">
+          Base
+        </Label>
+        <Input
+          type="number"
+          title="Base offset — the display address of wire register 0"
+          className={cn(CONTROL, 'w-full font-mono')}
+          value={addrBase}
+          onChange={(e) => setAddrBase(parseInt(e.target.value, 10) || 0)}
+          onKeyDown={(e) => e.key === 'Enter' && onMainAction()}
+        />
       </div>
       <div className="shrink-0 grow-0 basis-25">
         <Label className={LABEL}>Count</Label>
         <Input
-          className={cn(CONTROL, 'w-full font-mono')}
+          aria-invalid={Boolean(countError)}
+          title={countError ?? undefined}
+          className={cn(
+            CONTROL,
+            'w-full font-mono',
+            countError && 'border-destructive focus-visible:border-destructive'
+          )}
           value={countParam}
           onChange={(e) => setCountParam(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && onMainAction()}
         />
+        {countError && <p className="mt-1 text-[11px] text-destructive">{countError}</p>}
       </div>
       <div className="flex items-end gap-2">
         {!(!customFcMode && [6, 16].includes(parseFC(effectiveFc))) && (
@@ -138,7 +210,8 @@ const CommandBar: React.FC<CommandBarProps> = ({
         )}
         <Button
           onClick={onMainAction}
-          disabled={!connected || sending}
+          disabled={!connected || sending || invalid}
+          title={invalid ? (addrError ?? countError ?? undefined) : undefined}
           className="w-25 border-0 bg-action font-semibold text-action-foreground hover:bg-action/90"
         >
           {sending ? '...' : 'Exec'}

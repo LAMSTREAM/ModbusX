@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { DataFormat } from '../lib/modbus-config'
 import { Card } from './ui/card'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
@@ -6,6 +6,13 @@ import { cn } from '../lib/utils'
 
 export interface DataMonitorProps {
   dataFormat: DataFormat
+  /** First wire address in the grid, for the row-offset ruler. */
+  startAddr: number | null
+  /** Total cells rendered, so the ruler stops where the grid does. */
+  cellCount: number
+  /** Display offset, so the ruler agrees with the cell labels. */
+  addrBase: number
+  addrFormat: 'HEX' | 'DEC'
   setDataFormat: (f: DataFormat) => void
   /** `showLogs` — drives the flex 2 vs 1 split against the log pane. */
   expanded: boolean
@@ -27,9 +34,46 @@ const FORMAT_ITEM = cn(
 const DataMonitor: React.FC<DataMonitorProps> = ({
   dataFormat,
   setDataFormat,
+  startAddr,
+  cellCount,
+  addrBase,
+  addrFormat,
   expanded,
   children
 }) => {
+  // The grid is auto-fill, so its column count is a function of the container
+  // width and can only be known after layout. Measure it rather than deriving
+  // it from an assumed cell width, and keep the measurement OUT of the
+  // memoized grid so it cannot re-render cells.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [layout, setLayout] = useState<{ cols: number; rowH: number } | null>(null)
+
+  const measure = useCallback(() => {
+    const grid = bodyRef.current?.querySelector<HTMLElement>(':scope > div')
+    const first = grid?.firstElementChild as HTMLElement | null
+    if (!grid || !first) {
+      setLayout(null)
+      return
+    }
+    const cols = getComputedStyle(grid).gridTemplateColumns.split(/\s+/).filter(Boolean).length
+    const gap = parseFloat(getComputedStyle(grid).rowGap) || 0
+    const rowH = first.offsetHeight + gap
+    setLayout((prev) => (prev && prev.cols === cols && prev.rowH === rowH ? prev : { cols, rowH }))
+  }, [])
+
+  useEffect(() => {
+    measure()
+    const el = bodyRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measure, children])
+
+  const rows =
+    layout && startAddr !== null && cellCount > 0 && layout.cols > 0
+      ? Math.ceil(cellCount / layout.cols)
+      : 0
   return (
     <Card
       className={cn(
@@ -54,7 +98,47 @@ const DataMonitor: React.FC<DataMonitorProps> = ({
           ))}
         </ToggleGroup>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">{children}</div>
+      <div className="flex min-h-0 flex-1">
+        {/* Row-offset gutter. Rendered as a sibling of the scroll body and
+            scrolled with it, so it never becomes part of the grid's own
+            layout. It does cost horizontal space, which is why it is as narrow
+            as a 4-digit hex address allows. */}
+        {rows > 0 && layout && (
+          <div
+            aria-hidden="true"
+            className="shrink-0 overflow-hidden border-r bg-background/40 py-4 pr-2 pl-3"
+            style={{ marginTop: -(bodyRef.current?.scrollTop ?? 0) }}
+          >
+            {Array.from({ length: rows }, (_, r) => {
+              const addr = (startAddr ?? 0) + r * layout.cols
+              const shown = addr + addrBase
+              return (
+                <div
+                  key={r}
+                  className="text-right font-mono text-[10px] text-faint tabular-nums"
+                  style={{ height: layout.rowH, lineHeight: `${layout.rowH}px` }}
+                >
+                  {addrFormat === 'HEX'
+                    ? shown.toString(16).toUpperCase().padStart(4, '0')
+                    : shown.toString()}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {/* `data-grid-body` is a deliberate hook for the verification scripts.
+            The structural selectors they used were correct while the rewrite
+            was in flight, but they have now had to be re-anchored three times
+            as the tree gained levels. A named hook is stable by intent. */}
+        <div
+          ref={bodyRef}
+          data-grid-body=""
+          className="min-w-0 flex-1 overflow-y-auto p-4"
+          onScroll={measure}
+        >
+          {children}
+        </div>
+      </div>
     </Card>
   )
 }

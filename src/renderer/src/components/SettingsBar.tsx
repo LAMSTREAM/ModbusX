@@ -6,6 +6,7 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { cn } from '../lib/utils'
+import SerialFraming from './SerialFraming'
 import { CONTROL, CONTROL_QUIET, LABEL, ROW } from '../lib/ui-density'
 
 export interface SettingsBarProps {
@@ -17,6 +18,8 @@ export interface SettingsBarProps {
   scanPorts: () => void
   connected: boolean
   sending: boolean
+  /** Last connection-level failure, cleared on a successful connect. */
+  connError: string | null
   onConnect: () => void
   preventEnter: (e: React.KeyboardEvent) => void
 }
@@ -29,6 +32,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
   scanPorts,
   connected,
   sending,
+  connError,
   onConnect,
   preventEnter
 }) => {
@@ -69,7 +73,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
           onKeyDown={preventEnter}
         />
       </div>
-      <div className="flex-[1_1_300px]">
+      <div className="shrink-0 grow-0">
         {settings.mode === 'RTU' ? (
           <div className="flex flex-col">
             <Label className={LABEL}>Serial Port &amp; Baud</Label>
@@ -83,7 +87,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
                 value={settings.serialPort || undefined}
                 onValueChange={(v) => updateInfo('serialPort', v)}
               >
-                <SelectTrigger className={cn(CONTROL, 'min-w-[150px] flex-1')}>
+                <SelectTrigger className={cn(CONTROL, 'w-[132px] shrink-0 grow-0')}>
                   <SelectValue placeholder={portsScanned ? 'No ports found' : 'Scanning…'} />
                 </SelectTrigger>
                 <SelectContent>
@@ -115,7 +119,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
                 value={String(settings.baudRate)}
                 onValueChange={(v) => updateInfo('baudRate', parseInt(v))}
               >
-                <SelectTrigger className={cn(CONTROL, 'w-25 shrink-0 grow-0')}>
+                <SelectTrigger className={cn(CONTROL, 'w-[92px] shrink-0 grow-0')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -126,6 +130,14 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
                   ))}
                 </SelectContent>
               </Select>
+              {/* Port and baud are fixed-width rather than flexing so this
+                  fits without the row wrapping. */}
+              <SerialFraming
+                dataBits={settings.dataBits ?? 8}
+                parity={settings.parity ?? 'none'}
+                stopBits={settings.stopBits ?? 1}
+                onChange={updateInfo}
+              />
             </div>
           </div>
         ) : (
@@ -133,7 +145,7 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
             <Label className={LABEL}>IP Address &amp; Port</Label>
             <div className="flex gap-2">
               <Input
-                className={cn(CONTROL, 'flex-1')}
+                className={cn(CONTROL, 'w-[172px] shrink-0 grow-0')}
                 value={settings.ipAddress}
                 onChange={(e) => updateInfo('ipAddress', e.target.value)}
                 onKeyDown={preventEnter}
@@ -152,6 +164,21 @@ const SettingsBar: React.FC<SettingsBarProps> = ({
       {/* --primary's only consumer in the whole app. shadcn's
           disabled:opacity-50 supersedes the old opacity: 0.7 — accepted drift,
           since pixel identity is an explicit Non-Goal. */}
+      {/* Status is otherwise only inferable from the button's label, which
+          cannot distinguish "never connected" from "dropped with an error". */}
+      <span
+        title={connError ?? (connected ? 'Connected' : 'Not connected')}
+        className="mb-2.5 flex shrink-0 items-center gap-1.5 self-end text-[11px] font-semibold text-muted-foreground"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            'size-2 rounded-full',
+            connected ? 'bg-success' : connError ? 'bg-destructive' : 'bg-faint'
+          )}
+        />
+        {connected ? 'Online' : connError ? 'Error' : 'Offline'}
+      </span>
       <Button
         onClick={onConnect}
         disabled={sending}

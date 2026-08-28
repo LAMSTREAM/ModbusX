@@ -1,5 +1,5 @@
-import React from 'react'
-import { ChevronDown } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
+import { Check, ChevronDown, Copy } from 'lucide-react'
 import type { LogItem } from '../lib/modbus-config'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
@@ -33,6 +33,45 @@ const LogPane: React.FC<LogPaneProps> = ({
   onClear,
   listRef
 }) => {
+  // Direction filter. Empty set = show everything, which is also what the
+  // "All" chip resets to.
+  const [hidden, setHidden] = useState<Set<LogItem['dir']>>(new Set())
+  const [copied, setCopied] = useState(false)
+
+  const visible = useMemo(
+    () => (hidden.size === 0 ? logs : logs.filter((l) => !hidden.has(l.dir))),
+    [logs, hidden]
+  )
+
+  const toggleDir = (d: LogItem['dir']): void =>
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(d)) next.delete(d)
+      else next.add(d)
+      return next
+    })
+
+  const copyAll = async (): Promise<void> => {
+    // Copies what is on screen, not the whole buffer — if a filter is active
+    // the visible rows are what the user means by "the log".
+    const text = visible.map((l) => `${l.time}\t${l.dir}\t${l.msg}`).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // Clipboard can be denied; failing silently is better than a dialog in
+      // a debug tool.
+    }
+  }
+
+  const DIRS: LogItem['dir'][] = ['SYS', 'TX', 'RX']
+  const DIR_TONE: Record<string, string> = {
+    SYS: 'text-destructive',
+    TX: 'text-tx',
+    RX: 'text-rx'
+  }
+
   return (
     <Card
       className={cn(
@@ -51,9 +90,9 @@ const LogPane: React.FC<LogPaneProps> = ({
       >
         <span className="truncate text-[11px] font-bold tracking-wide text-foreground">
           LOGS
-          {logs.length > 0 && !showLogs && (
+          {visible.length > 0 && !showLogs && (
             <span className="ml-2 font-normal text-muted-foreground">
-              {logs[logs.length - 1].msg}
+              {visible[visible.length - 1].msg}
             </span>
           )}
         </span>
@@ -65,6 +104,46 @@ const LogPane: React.FC<LogPaneProps> = ({
         <div className="flex shrink-0 items-center gap-1">
           {showLogs && (
             <>
+              {/* Direction filter. Dimmed chip = that direction is hidden. */}
+              <div className="mr-1 flex items-center gap-0.5">
+                {DIRS.map((d) => {
+                  const on = !hidden.has(d)
+                  return (
+                    <Button
+                      key={d}
+                      variant="ghost"
+                      onClick={() => toggleDir(d)}
+                      title={on ? `Hide ${d}` : `Show ${d}`}
+                      aria-pressed={on}
+                      className={cn(
+                        'h-7 rounded-md px-1.5 font-mono text-[11px] font-bold',
+                        on ? DIR_TONE[d] : 'text-faint/60 line-through',
+                        'hover:bg-background'
+                      )}
+                    >
+                      {d}
+                    </Button>
+                  )
+                })}
+              </div>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={copyAll}
+                title={copied ? 'Copied' : 'Copy visible log'}
+                aria-label="Copy visible log"
+                className="size-7 rounded-md text-muted-foreground hover:bg-background hover:text-foreground"
+              >
+                {copied ? (
+                  <Check size={13} strokeWidth={2.5} />
+                ) : (
+                  <Copy size={13} strokeWidth={2} />
+                )}
+              </Button>
+
+              <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+
               <Label className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[11px] leading-normal font-semibold text-muted-foreground transition-colors hover:bg-background hover:text-foreground">
                 {/* onCheckedChange yields boolean | 'indeterminate'; coerce, or
                     a non-boolean reaches SavedConfig and AC12's shape check
@@ -110,7 +189,10 @@ const LogPane: React.FC<LogPaneProps> = ({
         ref={listRef}
         className="flex-1 overflow-y-auto px-3 py-2 font-mono text-xs leading-normal"
       >
-        {logs.map((l) => (
+        {visible.length === 0 && logs.length > 0 && (
+          <div className="py-2 text-faint">All {logs.length} entries hidden by the filter.</div>
+        )}
+        {visible.map((l) => (
           <div key={l.id} className="mb-1 flex gap-2">
             <span className="min-w-[60px] text-faint">{l.time}</span>
             <span

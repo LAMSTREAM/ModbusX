@@ -51,9 +51,7 @@ function probe(expected) {
   const buttons = settings ? [...settings.querySelectorAll('button')] : []
 
   const samples = {}
-  const cell = document.querySelector(
-    '#root > div > div > div:nth-of-type(3) > div:nth-of-type(2) > div > div:first-child'
-  )
+  const cell = document.querySelector('[data-grid-body] > div > div:first-child')
   if (cell) samples['grid cell (idle)'] = bg(cell)
 
   const input = settings && settings.querySelector('input')

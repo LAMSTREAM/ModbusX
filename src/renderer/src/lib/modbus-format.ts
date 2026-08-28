@@ -5,8 +5,25 @@ export const minDelay = async <T>(promise: Promise<T>, ms = 200): Promise<T> => 
   return res
 }
 
-export const formatAddress = (addr: number, fmt: AddressFormat) => {
-  return fmt === 'HEX' ? `${addr.toString(16).toUpperCase().padStart(4, '0')}` : addr.toString()
+/**
+ * Render a WIRE address for display, shifted by the user's base offset.
+ *
+ * `base` is added, not subtracted: callers hold protocol addresses and the user
+ * reads offset ones. The inverse (display -> wire) lives in `toWireAddress`.
+ */
+export const formatAddress = (addr: number, fmt: AddressFormat, base = 0): string => {
+  const shown = addr + base
+  return fmt === 'HEX' ? `${shown.toString(16).toUpperCase().padStart(4, '0')}` : shown.toString()
+}
+
+/**
+ * Parse what the user typed into a wire address, undoing the base offset.
+ * Returns NaN when the text is not a valid number in the current radix, which
+ * is what the caller checks before sending anything.
+ */
+export const toWireAddress = (text: string, fmt: AddressFormat, base = 0): number => {
+  const parsed = parseInt(text, fmt === 'HEX' ? 16 : 10)
+  return Number.isNaN(parsed) ? NaN : parsed - base
 }
 
 export const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e))

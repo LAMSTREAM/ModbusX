@@ -39,6 +39,13 @@ export interface SavedConfig {
   customFcValue: string
   address: string
   addrFormat: AddressFormat
+  /**
+   * Display offset. The Address field and every grid label show
+   * `wireAddress + addrBase`; what goes on the wire is `typed - addrBase`.
+   * 0 means the field IS the protocol address. Always decimal, whatever radix
+   * the address field is in, because it is an offset rather than an address.
+   */
+  addrBase: number
   countParam: string
   dataFormat: DataFormat
   customFcMode: boolean
@@ -53,7 +60,14 @@ export const loadConfig = (): SavedConfig => {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
       const parsed = JSON.parse(saved)
-      return { ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } }
+      return {
+        // `addrBase` post-dates the first schema, so a config written before it
+        // existed has no key at all. Default it rather than letting `undefined`
+        // reach the arithmetic.
+        addrBase: 0,
+        ...parsed,
+        settings: { ...DEFAULT_SETTINGS, ...parsed.settings }
+      }
     }
   } catch (e) {
     console.error('Failed to load config:', e)
@@ -64,6 +78,7 @@ export const loadConfig = (): SavedConfig => {
     customFcValue: '',
     address: '0',
     addrFormat: 'DEC',
+    addrBase: 0,
     countParam: '10',
     dataFormat: 'DEC_U',
     customFcMode: false,

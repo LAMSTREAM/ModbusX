@@ -43,7 +43,7 @@ function send(ws, method, params = {}, timeoutMs = 120000) {
 // Runs in the renderer for `seconds`, then resolves with the frame stats.
 function run(seconds) {
   return new Promise((resolve) => {
-    const GRID = '#root > div > div > div:nth-of-type(3) > div:nth-of-type(2) > div'
+    const GRID = '[data-grid-body] > div'
     const grid = document.querySelector(GRID)
     if (!grid || !grid.children.length) {
       resolve({ error: 'grid empty — run a successful read first' })

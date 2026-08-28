@@ -22,7 +22,8 @@ import {
   formatAddress,
   formatValue,
   minDelay,
-  parseFC
+  parseFC,
+  toWireAddress
 } from '../lib/modbus-format'
 
 // Two COMPLETE literal strings, never a template. Tailwind v4 scans source
@@ -48,12 +49,16 @@ const ModbusDebugger: React.FC = () => {
   // dropdown can say which.
   const [portsScanned, setPortsScanned] = useState(false)
   const [connected, setConnected] = useState(false)
+  // Distinguishes "never connected" from "dropped with an error" for the
+  // status indicator; the button label alone cannot tell them apart.
+  const [connError, setConnError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [standardFc, setStandardFc] = useState<string>(initialConfig.standardFc || '3')
   const [customFcValue, setCustomFcValue] = useState<string>(initialConfig.customFcValue || '')
   const [customFcMode, setCustomFcMode] = useState(initialConfig.customFcMode)
   const [address, setAddress] = useState<string>(initialConfig.address)
   const [addrFormat, setAddrFormat] = useState<AddressFormat>(initialConfig.addrFormat)
+  const [addrBase, setAddrBase] = useState<number>(initialConfig.addrBase ?? 0)
   const [countParam, setCountParam] = useState<string>(initialConfig.countParam)
   const [autoRead, setAutoRead] = useState(false)
   const [monitorData, setMonitorData] = useState<{ startAddr: number; values: number[] } | null>(
@@ -93,6 +98,7 @@ const ModbusDebugger: React.FC = () => {
       customFcValue,
       address,
       addrFormat,
+      addrBase,
       countParam,
       dataFormat,
       customFcMode,
@@ -106,6 +112,7 @@ const ModbusDebugger: React.FC = () => {
     customFcValue,
     address,
     addrFormat,
+    addrBase,
     countParam,
     dataFormat,
     customFcMode,
@@ -298,16 +305,19 @@ const ModbusDebugger: React.FC = () => {
       if (connected) {
         await minDelay(window.modbusAPI.disconnect())
         setConnected(false)
+        setConnError(null)
         setAutoRead(false)
         addLog('SYS', 'Disconnected')
       } else {
         if (settings.mode === 'RTU' && !settings.serialPort) return alert('Select Port')
         await minDelay(window.modbusAPI.connect(settings))
         setConnected(true)
+        setConnError(null)
         addLog('SYS', `Connected (Timeout: ${settings.timeout}ms)`)
       }
     } catch (e: unknown) {
       setConnected(false)
+      setConnError(errMsg(e))
       addLog('SYS', 'Connection Error', errMsg(e))
     } finally {
       busyRef.current = false
@@ -319,12 +329,14 @@ const ModbusDebugger: React.FC = () => {
     if (busyRef.current) return
     busyRef.current = true
     try {
-      const base = addrFormat === 'HEX' ? 16 : 10
-      const addrNum = parseInt(address, base)
+      // The field holds a DISPLAY address; the wire wants it without the base.
+      const addrNum = toWireAddress(address, addrFormat, addrBase)
       let fcNum = parseFC(effectiveFc)
       if (!customFcMode && ![1, 2, 3, 4].includes(fcNum)) fcNum = 3
       const count = parseInt(countParam, 10) || 10
       if (isNaN(addrNum)) throw new Error('Invalid Address')
+      if (addrNum < 0)
+        throw new Error(`Address is below the base offset (${addrBase}) — nothing to read`)
 
       if (!silent) setSending(true)
       const execute = async () => {
@@ -337,7 +349,10 @@ const ModbusDebugger: React.FC = () => {
         setSelection(null)
         setMonitorData({ startAddr: addrNum, values: numValues })
         if (!silent)
-          addLog('SYS', `Read ${res.length} items from ${formatAddress(addrNum, addrFormat)}`)
+          addLog(
+            'SYS',
+            `Read ${res.length} items from ${formatAddress(addrNum, addrFormat, addrBase)}`
+          )
       }
       await (silent ? execute() : minDelay(execute()))
     } catch (e: unknown) {
@@ -352,9 +367,11 @@ const ModbusDebugger: React.FC = () => {
     if (busyRef.current || !monitorData) return
     busyRef.current = true
     try {
-      const base = addrFormat === 'HEX' ? 16 : 10
-      const startAddr = parseInt(address, base)
+      const startAddr = toWireAddress(address, addrFormat, addrBase)
       const count = parseInt(countParam, 10) || 1
+      if (isNaN(startAddr)) throw new Error('Invalid Address')
+      if (startAddr < 0)
+        throw new Error(`Address is below the base offset (${addrBase}) — nothing to write`)
       const fcNum = parseFC(effectiveFc)
 
       const valuesToWrite: number[] = []
@@ -374,7 +391,7 @@ const ModbusDebugger: React.FC = () => {
           address: startAddr,
           values: count === 1 ? valuesToWrite[0] : valuesToWrite
         })
-        addLog('SYS', `Write OK to ${formatAddress(startAddr, addrFormat)}`)
+        addLog('SYS', `Write OK to ${formatAddress(startAddr, addrFormat, addrBase)}`)
 
         // Auto Refresh
         if (connected) {
@@ -413,6 +430,8 @@ const ModbusDebugger: React.FC = () => {
   }
 
   const toggleAddrFormat = () => {
+    // Converts the radix of the DISPLAY value only. The base offset is a plain
+    // decimal number and does not move with it.
     const currentBase = addrFormat === 'HEX' ? 16 : 10
     const val = parseInt(address, currentBase)
     const nextFmt = addrFormat === 'HEX' ? 'DEC' : 'HEX'
@@ -461,6 +480,7 @@ const ModbusDebugger: React.FC = () => {
               nextValue={monitorData.values[idx + 1]}
               format={dataFormat}
               addrFormat={addrFormat}
+              addrBase={addrBase}
               isSelected={isSelected}
               onSelectionStart={handleSelectionStart}
               onSelectionEnter={handleSelectionEnter}
@@ -474,6 +494,7 @@ const ModbusDebugger: React.FC = () => {
     monitorData,
     dataFormat,
     addrFormat,
+    addrBase,
     selection,
     handleSelectionStart,
     handleSelectionEnter,
@@ -496,6 +517,7 @@ const ModbusDebugger: React.FC = () => {
           scanPorts={scanPorts}
           connected={connected}
           sending={sending}
+          connError={connError}
           onConnect={handleConnect}
           preventEnter={preventEnter}
         />
@@ -516,6 +538,8 @@ const ModbusDebugger: React.FC = () => {
           setAutoRead={setAutoRead}
           addrFormat={addrFormat}
           toggleAddrFormat={toggleAddrFormat}
+          addrBase={addrBase}
+          setAddrBase={setAddrBase}
           effectiveFc={effectiveFc}
           connected={connected}
           sending={sending}
@@ -529,7 +553,15 @@ const ModbusDebugger: React.FC = () => {
             memoized ELEMENT passed as a child keeps its referential identity, so
             React bails out of reconciling the entire grid subtree when this
             parent re-renders for an unrelated reason. Do not "tidy" this inward. */}
-        <DataMonitor dataFormat={dataFormat} setDataFormat={setDataFormat} expanded={showLogs}>
+        <DataMonitor
+          dataFormat={dataFormat}
+          setDataFormat={setDataFormat}
+          startAddr={monitorData?.startAddr ?? null}
+          cellCount={monitorData?.values.length ?? 0}
+          addrBase={addrBase}
+          addrFormat={addrFormat}
+          expanded={showLogs}
+        >
           {gridContent}
         </DataMonitor>
 

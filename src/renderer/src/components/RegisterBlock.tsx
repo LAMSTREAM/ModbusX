@@ -43,6 +43,8 @@ export interface RegisterBlockProps {
   nextValue?: number
   format: DataFormat
   addrFormat: AddressFormat
+  /** Display offset applied to the address label. */
+  addrBase: number
   index: number
   isSelected: boolean
   onSelectionStart: (index: number) => void
@@ -57,6 +59,7 @@ const RegisterBlock = memo<RegisterBlockProps>(
     nextValue,
     format,
     addrFormat,
+    addrBase,
     index,
     isSelected,
     onSelectionStart,
@@ -71,8 +74,8 @@ const RegisterBlock = memo<RegisterBlockProps>(
 
     const is32Bit = format === 'FLOAT' || format === 'UINT32'
     const addressLabel = is32Bit
-      ? `${formatAddress(address, addrFormat)}-${formatAddress(address + 1, addrFormat).slice(-2)}`
-      : formatAddress(address, addrFormat)
+      ? `${formatAddress(address, addrFormat, addrBase)}-${formatAddress(address + 1, addrFormat, addrBase).slice(-2)}`
+      : formatAddress(address, addrFormat, addrBase)
 
     const handleFocus = () => {
       if (isReadOnly) return
@@ -149,7 +152,8 @@ const RegisterBlock = memo<RegisterBlockProps>(
       prev.isSelected === next.isSelected &&
       prev.format === next.format &&
       prev.address === next.address &&
-      prev.addrFormat === next.addrFormat
+      prev.addrFormat === next.addrFormat &&
+      prev.addrBase === next.addrBase
     )
   }
 )
@@ -170,7 +174,7 @@ RegisterBlock.displayName = 'RegisterBlock'
 // sides stops distribution over a union, so two props added at once also fail.
 type Compared = Pick<
   RegisterBlockProps,
-  'value' | 'nextValue' | 'isSelected' | 'format' | 'address' | 'addrFormat'
+  'value' | 'nextValue' | 'isSelected' | 'format' | 'address' | 'addrFormat' | 'addrBase'
 >
 type Stable = Pick<RegisterBlockProps, 'index' | 'onSelectionStart' | 'onSelectionEnter' | 'onEdit'>
 type Unaccounted = Exclude<keyof RegisterBlockProps, keyof Compared | keyof Stable>
