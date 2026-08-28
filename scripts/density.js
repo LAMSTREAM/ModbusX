@@ -60,7 +60,12 @@ function measure() {
   const box = (scroller || document.documentElement).getBoundingClientRect()
   const fullyVisible = cells.filter((c) => {
     const r = c.getBoundingClientRect()
-    return r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5 && r.left >= box.left - 0.5 && r.right <= box.right + 0.5
+    return (
+      r.top >= box.top - 0.5 &&
+      r.bottom <= box.bottom + 0.5 &&
+      r.left >= box.left - 0.5 &&
+      r.right <= box.right + 0.5
+    )
   }).length
 
   const firstW = cells[0].getBoundingClientRect().width

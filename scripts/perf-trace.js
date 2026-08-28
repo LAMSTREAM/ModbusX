@@ -98,7 +98,8 @@ function run(seconds) {
       // Drop the first few frames: they capture the cost of starting the walk,
       // not steady-state rendering.
       const s = frames.slice(5).sort((a, b) => a - b)
-      const q = (p) => (s.length ? Number(s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(3)) : null)
+      const q = (p) =>
+        s.length ? Number(s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(3)) : null
       resolve({
         seconds,
         cells: cells.length,

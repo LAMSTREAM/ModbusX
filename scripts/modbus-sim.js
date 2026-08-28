@@ -73,12 +73,16 @@ const server = net.createServer((socket) => {
         // validate a read the app could never perform against real hardware.
         if (qty < 1 || qty > 125) {
           socket.write(exception(mbap, unit, fn, 0x03)) // illegal data value
-          console.error(`  FC${fn} addr=0x${addr.toString(16)} qty=${qty} -> ILLEGAL VALUE (max 125)`)
+          console.error(
+            `  FC${fn} addr=0x${addr.toString(16)} qty=${qty} -> ILLEGAL VALUE (max 125)`
+          )
           continue
         }
         if (addr + qty > COUNT) {
           socket.write(exception(mbap, unit, fn, 0x02)) // illegal data address
-          console.error(`  FC${fn} addr=0x${addr.toString(16)} qty=${qty} -> ILLEGAL ADDRESS (have ${COUNT})`)
+          console.error(
+            `  FC${fn} addr=0x${addr.toString(16)} qty=${qty} -> ILLEGAL ADDRESS (have ${COUNT})`
+          )
           continue
         }
 

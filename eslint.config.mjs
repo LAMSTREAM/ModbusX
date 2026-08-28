@@ -35,5 +35,28 @@ export default defineConfig(
       'react/prop-types': 'off'
     }
   },
+  {
+    // Node verification tooling (the CDP gate scripts and the Modbus
+    // simulator). Plain CommonJS/ESM JavaScript, not app code: the
+    // TypeScript-flavoured rules from the recommended set do not apply, and
+    // requiring return-type annotations in a .js file is meaningless.
+    files: ['scripts/**/*.js'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-require-imports': 'off'
+    }
+  },
+  {
+    // Vendored shadcn/ui primitives. They export a component alongside its
+    // `cva()` variants (`Button` + `buttonVariants`, `ToggleGroup` +
+    // `toggleGroupVariants`, ...), which react-refresh flags as a mixed export.
+    // Its `allowConstantExport` escape hatch does not cover a call expression,
+    // so the rule has to be off for these files. Scoped to components/ui only —
+    // our own components still get the check.
+    files: ['src/renderer/src/components/ui/**'],
+    rules: {
+      'react-refresh/only-export-components': 'off'
+    }
+  },
   eslintConfigPrettier
 )

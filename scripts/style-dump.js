@@ -66,7 +66,10 @@ async function pickTarget() {
     )
   }
   const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl)
-  if (!page) die(`no page target on port ${PORT}. Targets seen: ${list.map((t) => t.type).join(', ') || 'none'}`)
+  if (!page)
+    die(
+      `no page target on port ${PORT}. Targets seen: ${list.map((t) => t.type).join(', ') || 'none'}`
+    )
   return page
 }
 
