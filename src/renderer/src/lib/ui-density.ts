@@ -52,7 +52,9 @@ import { cn } from './utils'
 
 /** The standard control surface: inputs, selects, and default buttons. */
 export const CONTROL = cn(
-  'h-9 rounded-md px-2.5 text-[13px] md:text-[13px] shadow-none',
+  // `py-0` is a neutralizer too: shadcn's Input ships `py-1`, which shows up as
+  // padding `4px 10px` where the pre-rewrite control was `0 10px`.
+  'h-9 rounded-md bg-background px-2.5 py-0 text-[13px] md:text-[13px] shadow-none',
   // Neutralizers, per Rule 1. `md:text-[13px]` above is one too: shadcn's Input
   // ships `md:text-sm`, which a bare `text-[13px]` cannot displace.
   'dark:bg-background dark:hover:bg-background'
@@ -61,8 +63,14 @@ export const CONTROL = cn(
 /** Quiet buttons that sit on the cell fill rather than the page background. */
 export const CONTROL_QUIET = cn(CONTROL, 'bg-cell dark:bg-cell dark:hover:bg-cell')
 
-/** Section captions — the pre-rewrite `labelStyle` (12px / 600 / 6px below). */
-export const LABEL = cn('mb-1.5 block text-xs font-semibold text-foreground')
+/**
+ * Section captions — the pre-rewrite `labelStyle` (12px / 600 / 6px below).
+ *
+ * `leading-normal` is a neutralizer: shadcn's Label ships `leading-none`, but
+ * the pre-rewrite `<span>` inherited the body's 1.5. At 12px that is a 6px
+ * height difference per label, which propagates into the panel heights below.
+ */
+export const LABEL = cn('mb-1.5 block text-xs leading-normal font-semibold text-foreground')
 
 /** A row of controls — the pre-rewrite `rowStyle` (flex, 12px gap, wrap). */
 export const ROW = cn('flex flex-wrap items-end gap-3')

@@ -19,18 +19,18 @@ const BrandMark: React.FC<BrandMarkProps> = ({ size = 18 }) => (
     fill="none"
     aria-hidden="true"
     focusable="false"
-    style={{ display: 'block', flex: '0 0 auto' }}
+    className="block shrink-0"
   >
-    <circle cx="512" cy="512" r="78" fill="var(--c-brand)" />
+    <circle cx="512" cy="512" r="78" fill="var(--brand)" />
     <path
       d="M330 340 A244 244 0 0 0 330 684"
-      stroke="var(--c-text)"
+      stroke="var(--foreground)"
       strokeWidth="104"
       strokeLinecap="round"
     />
     <path
       d="M694 340 A244 244 0 0 1 694 684"
-      stroke="var(--c-brand)"
+      stroke="var(--brand)"
       strokeWidth="104"
       strokeLinecap="round"
     />

@@ -1,7 +1,12 @@
 import React from 'react'
 import type { AddressFormat } from '../lib/modbus-config'
 import { parseFC } from '../lib/modbus-format'
-import { inputBase, labelStyle, rowStyle, flexFixed, flexGrow } from './section-styles'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import { cn } from '../lib/utils'
+import { CONTROL, CONTROL_QUIET, LABEL, ROW } from '../lib/ui-density'
 
 export interface CommandBarProps {
   customFcMode: boolean
@@ -25,6 +30,12 @@ export interface CommandBarProps {
   onMainAction: () => void
 }
 
+// The two joined pairs below fake a segmented control the way the pre-rewrite
+// markup did: kill the inner border and split the radii. shadcn's input-group
+// is deliberately not used — it would restructure the DOM that AC6 pins.
+const JOIN_LEFT = 'rounded-r-none border-r-0'
+const JOIN_RIGHT = 'rounded-l-none'
+
 const CommandBar: React.FC<CommandBarProps> = ({
   customFcMode,
   setCustomFcMode,
@@ -47,133 +58,91 @@ const CommandBar: React.FC<CommandBarProps> = ({
   onMainAction
 }) => {
   return (
-    <div style={rowStyle}>
-      <div style={flexFixed('220px')}>
-        <span style={labelStyle}>Function</span>
-        <div style={{ display: 'flex' }}>
+    <div className={ROW}>
+      <div className="shrink-0 grow-0 basis-[220px]">
+        <Label className={LABEL}>Function</Label>
+        <div className="flex">
           {customFcMode ? (
-            <input
-              style={{
-                ...inputBase,
-                width: '150px',
-                borderRight: 'none',
-                borderRadius: '6px 0 0 6px'
-              }}
+            <Input
+              className={cn(CONTROL, 'w-[150px]', JOIN_LEFT)}
               value={customFcValue}
               onChange={(e) => setCustomFcValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && onCommand()}
               placeholder="FC (e.g. 0x06)"
             />
           ) : (
-            <select
-              style={{
-                ...inputBase,
-                width: '150px',
-                borderRight: 'none',
-                borderRadius: '6px 0 0 6px'
-              }}
-              value={standardFc}
-              onChange={(e) => setStandardFc(e.target.value)}
-            >
-              <option value="3">03 Read Holding</option>
-              <option value="4">04 Read Input</option>
-              <option value="1">01 Read Coils</option>
-              <option value="6">06 Write Single</option>
-              <option value="16">16 Write Multi</option>
-            </select>
+            <Select value={standardFc} onValueChange={setStandardFc}>
+              <SelectTrigger className={cn(CONTROL, 'w-[150px]', JOIN_LEFT)}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="3">03 Read Holding</SelectItem>
+                <SelectItem value="4">04 Read Input</SelectItem>
+                <SelectItem value="1">01 Read Coils</SelectItem>
+                <SelectItem value="6">06 Write Single</SelectItem>
+                <SelectItem value="16">16 Write Multi</SelectItem>
+              </SelectContent>
+            </Select>
           )}
-          <button
+          <Button
+            variant="outline"
             onClick={() => setCustomFcMode(!customFcMode)}
-            style={{
-              ...inputBase,
-              width: '70px',
-              borderRadius: '0 6px 6px 0',
-              background: 'var(--c-bg-cell)',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontWeight: 600,
-              padding: 0
-            }}
+            className={cn('w-[70px] px-0 text-[11px] font-semibold', CONTROL_QUIET, JOIN_RIGHT)}
           >
             {customFcMode ? 'Custom' : 'Std'}
-          </button>
+          </Button>
         </div>
       </div>
-      <div style={flexGrow}>
-        <span style={labelStyle}>Address ({addrFormat})</span>
-        <div style={{ display: 'flex' }}>
-          <input
-            style={{
-              ...inputBase,
-              width: '100%',
-              borderRight: 'none',
-              borderRadius: '6px 0 0 6px',
-              fontFamily: 'monospace'
-            }}
+      <div className="flex-[1_1_120px]">
+        <Label className={LABEL}>Address ({addrFormat})</Label>
+        <div className="flex">
+          <Input
+            className={cn(CONTROL, 'w-full font-mono', JOIN_LEFT)}
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onMainAction()}
           />
-          <button
+          {/* Stays a Button, not a ToggleGroup: toggleAddrFormat converts the
+              address VALUE as a side effect, which a value-driven ToggleGroup
+              would obscure. */}
+          <Button
+            variant="outline"
             onClick={toggleAddrFormat}
-            style={{
-              ...inputBase,
-              width: '50px',
-              borderRadius: '0 6px 6px 0',
-              background: 'var(--c-bg-cell)',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontWeight: 600,
-              padding: 0
-            }}
+            className={cn('w-[50px] px-0 text-[11px] font-semibold', CONTROL_QUIET, JOIN_RIGHT)}
           >
             {addrFormat}
-          </button>
+          </Button>
         </div>
       </div>
-      <div style={flexFixed('100px')}>
-        <span style={labelStyle}>Count</span>
-        <input
-          style={{ ...inputBase, width: '100%', fontFamily: 'monospace' }}
+      <div className="shrink-0 grow-0 basis-25">
+        <Label className={LABEL}>Count</Label>
+        <Input
+          className={cn(CONTROL, 'w-full font-mono')}
           value={countParam}
           onChange={(e) => setCountParam(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && onMainAction()}
         />
       </div>
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+      <div className="flex items-end gap-2">
         {!(!customFcMode && [6, 16].includes(parseFC(effectiveFc))) && (
-          <button
+          <Button
             onClick={() => setAutoRead(!autoRead)}
             disabled={!connected}
-            style={{
-              ...inputBase,
-              width: '80px',
-              fontWeight: 600,
-              border: 'none',
-              cursor: !connected ? 'not-allowed' : 'pointer',
-              background: autoRead ? 'var(--c-success)' : 'var(--c-bg-cell)',
-              color: autoRead ? '#fff' : 'var(--c-text)'
-            }}
+            className={cn(
+              'w-20 border-0 font-semibold',
+              autoRead ? 'bg-success text-success-foreground hover:bg-success/90' : CONTROL_QUIET
+            )}
           >
             {autoRead ? 'Stop' : 'Auto'}
-          </button>
+          </Button>
         )}
-        <button
+        <Button
           onClick={onMainAction}
           disabled={!connected || sending}
-          style={{
-            ...inputBase,
-            width: '100px',
-            fontWeight: 600,
-            border: 'none',
-            cursor: !connected || sending ? 'not-allowed' : 'pointer',
-            background: 'var(--c-accent)',
-            color: '#fff',
-            opacity: !connected || sending ? 0.5 : 1
-          }}
+          className="w-25 border-0 bg-action font-semibold text-action-foreground hover:bg-action/90"
         >
           {sending ? '...' : 'Exec'}
-        </button>
+        </Button>
       </div>
     </div>
   )

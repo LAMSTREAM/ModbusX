@@ -475,41 +475,14 @@ const ModbusDebugger: React.FC = () => {
     handleCellEdit
   ])
   return (
-    <div
-      style={{
-        height: '100%',
-        width: '100%',
-        padding: '20px',
-        boxSizing: 'border-box',
-        background: 'var(--c-bg)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '16px'
-      }}
-    >
+    <div className="flex h-full w-full flex-col gap-4 bg-background p-5">
       {/* 0. App header — identity on the left, app-level chrome on the right.
           Theme belongs here rather than in the connection form: it is not a
           Modbus setting. */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-          paddingBottom: '12px',
-          borderBottom: '1px solid var(--c-border)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <header className="flex items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
           <BrandMark size={18} />
-          <span
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              letterSpacing: '0.01em',
-              color: 'var(--c-text)'
-            }}
-          >
+          <span className="text-[13px] font-semibold tracking-[0.01em] text-foreground">
             ModbusX
           </span>
         </div>
