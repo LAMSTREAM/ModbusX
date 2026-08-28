@@ -60,8 +60,20 @@ export const CONTROL = cn(
   'dark:bg-background dark:hover:bg-background'
 )
 
-/** Quiet buttons that sit on the cell fill rather than the page background. */
-export const CONTROL_QUIET = cn(CONTROL, 'bg-cell dark:bg-cell dark:hover:bg-cell')
+/**
+ * Quiet buttons that sit on the cell fill rather than the page background.
+ *
+ * `text-foreground` is not decoration. Applied to a DEFAULT-variant Button,
+ * this constant replaces the background but leaves the variant's
+ * `text-primary-foreground` in place — which in dark mode is #18181b on a
+ * #1c1c20 fill, i.e. invisible. Measured on the Auto button before this was
+ * added: color rgb(24,24,27) on background rgb(28,28,32).
+ *
+ * Nothing mechanical caught it: AC17 samples background-color only, and the
+ * fidelity check is explicitly pre-told that control chrome may differ. It was
+ * found by looking at a screenshot. `ac17.js` now asserts contrast too.
+ */
+export const CONTROL_QUIET = cn(CONTROL, 'bg-cell text-foreground dark:bg-cell dark:hover:bg-cell')
 
 /**
  * Section captions — the pre-rewrite `labelStyle` (12px / 600 / 6px below).

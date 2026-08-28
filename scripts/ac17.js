@@ -68,6 +68,32 @@ function probe(expected) {
   const themeToggle = document.querySelector('header button')
   if (themeToggle) samples['ThemeToggle (idle)'] = bg(themeToggle)
 
+  // Contrast, not just opacity. A background override on a default-variant
+  // Button leaves the variant's text colour behind: measured once as
+  // rgb(24,24,27) text on an rgb(28,28,32) fill — an invisible label that every
+  // background-only check passes. Flag any button whose text and background are
+  // within a small luminance distance of each other.
+  const lum = (c) => {
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c || '')
+    if (!m) return null
+    const [r, g, b2] = [+m[1], +m[2], +m[3]]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b2
+  }
+  const lowContrast = []
+  for (const el of document.querySelectorAll('#root button')) {
+    if (!el.textContent.trim()) continue
+    const cs = getComputedStyle(el)
+    const lt = lum(cs.color)
+    const lb = lum(cs.backgroundColor)
+    if (lt === null || lb === null) continue
+    if (cs.backgroundColor === 'rgba(0, 0, 0, 0)') continue
+    if (Math.abs(lt - lb) < 20) {
+      lowContrast.push(
+        `"${el.textContent.trim().slice(0, 14)}" ${cs.color} on ${cs.backgroundColor}`
+      )
+    }
+  }
+
   // dark:hover:bg-input/50 is a DIFFERENT modifier from dark:bg-input/30, so an
   // idle sample cannot see it. :hover cannot be synthesized from script, so the
   // hover neutralizer is asserted statically instead: every constant in
@@ -86,9 +112,16 @@ function probe(expected) {
 
   return {
     samples,
+    lowContrastButtons: lowContrast,
     leaks: leaks.map(([k, v]) => `${k} = ${v}`),
     unexpected: wrong.map(([k, v]) => `${k} = ${v} (expected ${expected[k]})`),
-    verdict: leaks.length ? 'LEAK' : wrong.length ? 'UNEXPECTED' : 'CLEAN'
+    verdict: leaks.length
+      ? 'LEAK'
+      : lowContrast.length
+        ? 'LOW_CONTRAST'
+        : wrong.length
+          ? 'UNEXPECTED'
+          : 'CLEAN'
   }
 }
 

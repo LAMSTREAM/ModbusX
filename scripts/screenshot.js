@@ -57,6 +57,15 @@ async function main() {
   // forever. Forcing the lifecycle back to active is what makes this usable
   // unattended. (Measured: fromSurface:false times out here even when active,
   // so the surface path — the default — is the one that works.)
+  // Pin the theme here rather than inheriting page state — a capture taken
+  // while a previous step's theme flip is still settling silently produces two
+  // screenshots of the same theme.
+  const theme = arg('--theme', 'light')
+  await send(ws, 'Runtime.evaluate', {
+    expression: `document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)})`
+  })
+  await new Promise((r) => setTimeout(r, 500))
+
   await send(ws, 'Page.enable')
   await send(ws, 'Page.setWebLifecycleState', { state: 'active' })
   await new Promise((r) => setTimeout(r, 400))
