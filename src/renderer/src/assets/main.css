@@ -165,26 +165,28 @@
 /* Zinc-based dark palette, mirroring the light token roles one-for-one. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    /* Soft dark grey, not near-black. #09090b was effectively pure black:
-       high-contrast and tiring. This sits around zinc-850 so panels and cells
-       still separate from the page without the hard edge. */
-    --background: #1b1b1e;
-    --muted: #26262a;
-    --secondary: #26262a;
-    --accent: #26262a;
-    --card: #212125;
-    --cell: #26262a;
+    /* Grey, not black, and deliberately low-contrast. The previous #1b1b1e was
+       still dark enough to read as near-black and put ~14:1 between text and
+       page. Everything here is lifted a step and the foreground eased to
+       #d4d4d8, which lands around 9:1 — comfortably above WCAG AA for body text
+       while losing the glare. */
+    --background: #26262a;
+    --muted: #333338;
+    --secondary: #333338;
+    --accent: #333338;
+    --card: #2d2d32;
+    --cell: #323238;
 
-    --border: #34343a;
-    --input: #34343a;
-    --border-hover: #45454d;
+    --border: #3f3f47;
+    --input: #3f3f47;
+    --border-hover: #52525c;
 
-    --foreground: #e8e8ea;
-    --muted-foreground: #a1a1aa;
-    --faint: #7a7a84;
+    --foreground: #d4d4d8;
+    --muted-foreground: #9b9ba4;
+    --faint: #74747d;
 
-    --primary: #e8e8ea;
-    --primary-foreground: #1b1b1e;
+    --primary: #d4d4d8;
+    --primary-foreground: #26262a;
 
     --action: #3b82f6;
     --action-foreground: #ffffff;
@@ -197,39 +199,41 @@
 
     color-scheme: dark;
 
-    --selection: #1e3a8a;
+    --selection: #24406b;
     --selection-border: #3b82f6;
-    --selection-foreground: #bfdbfe;
+    --selection-foreground: #cfe0fb;
 
     --tx: #fbbf24;
     --rx: #34d399;
 
-    --scrollbar: #3f3f46;
-    --scrollbar-hover: #56565f;
+    --scrollbar: #4a4a53;
+    --scrollbar-hover: #5f5f6a;
   }
 }
 
 :root[data-theme='dark'] {
-  /* Soft dark grey, not near-black. #09090b was effectively pure black:
-     high-contrast and tiring. This sits around zinc-850 so panels and cells
-     still separate from the page without the hard edge. */
-  --background: #1b1b1e;
-  --muted: #26262a;
-  --secondary: #26262a;
-  --accent: #26262a;
-  --card: #212125;
-  --cell: #26262a;
+  /* Grey, not black, and deliberately low-contrast. The previous #1b1b1e was
+     still dark enough to read as near-black and put ~14:1 between text and
+     page. Everything here is lifted a step and the foreground eased to
+     #d4d4d8, which lands around 9:1 — comfortably above WCAG AA for body text
+     while losing the glare. */
+  --background: #26262a;
+  --muted: #333338;
+  --secondary: #333338;
+  --accent: #333338;
+  --card: #2d2d32;
+  --cell: #323238;
 
-  --border: #34343a;
-  --input: #34343a;
-  --border-hover: #45454d;
+  --border: #3f3f47;
+  --input: #3f3f47;
+  --border-hover: #52525c;
 
-  --foreground: #e8e8ea;
-  --muted-foreground: #a1a1aa;
-  --faint: #7a7a84;
+  --foreground: #d4d4d8;
+  --muted-foreground: #9b9ba4;
+  --faint: #74747d;
 
-  --primary: #e8e8ea;
-  --primary-foreground: #1b1b1e;
+  --primary: #d4d4d8;
+  --primary-foreground: #26262a;
 
   --action: #3b82f6;
   --action-foreground: #ffffff;
@@ -242,15 +246,15 @@
 
   color-scheme: dark;
 
-  --selection: #1e3a8a;
+  --selection: #24406b;
   --selection-border: #3b82f6;
-  --selection-foreground: #bfdbfe;
+  --selection-foreground: #cfe0fb;
 
   --tx: #fbbf24;
   --rx: #34d399;
 
-  --scrollbar: #3f3f46;
-  --scrollbar-hover: #56565f;
+  --scrollbar: #4a4a53;
+  --scrollbar-hover: #5f5f6a;
 }
 
 /* This layer comes after Tailwind's Preflight, so on source order within

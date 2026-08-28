@@ -32,7 +32,7 @@ const SELECTORS = [
   ['slave-id-input', `${CONTENT} > div:nth-of-type(1) > div:nth-of-type(2) input`],
   ['data-monitor-panel', `${CONTENT} > div:nth-of-type(3)`],
   ['grid-container', '[data-grid-body] > div'],
-  ['first-register-cell', '[data-grid-body] > div > div:first-child'],
+  ['first-register-cell', '[data-grid-body] > div > div:has(input)'],
   [
     'first-log-direction',
     `${CONTENT} > div:nth-of-type(4) > div:nth-of-type(2) > div:first-child > span:nth-of-type(2)`

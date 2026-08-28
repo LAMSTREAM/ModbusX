@@ -8,8 +8,10 @@ import DataMonitor from './DataMonitor'
 import LogPane from './LogPane'
 import { useTheme } from '../hooks/useTheme'
 import {
+  COIL_CODES,
   MAX_LOG_ENTRIES,
   STORAGE_KEY,
+  WRITE_CODES,
   loadConfig,
   type AddressFormat,
   type DataFormat,
@@ -23,6 +25,7 @@ import {
   formatValue,
   minDelay,
   parseFC,
+  parseValue,
   toWireAddress
 } from '../lib/modbus-format'
 
@@ -30,8 +33,45 @@ import {
 // text and will not emit a class it cannot see spelled out, so building
 // `minmax(${colWidth},1fr)` from a variable would silently produce no rule at
 // all. This is the mechanism AC7 rests on.
-const GRID_16 = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(70px,1fr))]'
-const GRID_32 = 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))]'
+// The register grid is a hex editor: a fixed 16 registers per row, rows
+// aligned to 0x**0 boundaries, with the row ruler and column headers as cells
+// of the SAME css grid. Everything therefore lines up by construction — no
+// measurement, no scroll syncing, and no way for the ruler to drift out of
+// step with the data.
+//
+// 16 is fixed rather than auto-filled on purpose. Auto-fill made the column
+// count depend on window width, so a row could begin at any address and the
+// ruler could not be read as an index at all. A stable 16 is what makes
+// `+0..+F` mean something.
+//
+// Two literal templates, never assembled from a variable: Tailwind scans
+// source text and will not emit a class it cannot see spelled out. The leading
+// track is the ruler gutter; the min-width is what makes the grid scroll
+// horizontally rather than crushing cells below legibility.
+const GRID_NARROW =
+  'grid min-w-[976px] gap-2 [grid-template-columns:3.25rem_repeat(16,minmax(52px,1fr))]'
+const GRID_WIDE =
+  'grid min-w-[904px] gap-2 [grid-template-columns:3.25rem_repeat(8,minmax(104px,1fr))]'
+
+/**
+ * Row geometry per format. Two things vary: how many registers a row spans,
+ * and how many cells that is.
+ *
+ * BIN is the reason this is a table rather than a boolean. Sixteen binary
+ * digits need roughly 125px at the cell's 13px monospace, so it cannot share
+ * the 52px track the other 16-bit formats use — it gets the wide track and
+ * therefore covers 8 registers per row instead of 16. Alignment survives
+ * because 8 is still a power of two: rows land on 0x**0 and 0x**8.
+ */
+const ROW_LAYOUT: Record<DataFormat, { regs: number; cells: number; wide: boolean }> = {
+  DEC_U: { regs: 16, cells: 16, wide: false },
+  DEC_S: { regs: 16, cells: 16, wide: false },
+  HEX: { regs: 16, cells: 16, wide: false },
+  ASCII: { regs: 16, cells: 16, wide: false },
+  BIN: { regs: 8, cells: 8, wide: true },
+  UINT32: { regs: 16, cells: 8, wide: true },
+  FLOAT: { regs: 16, cells: 8, wide: true }
+}
 
 // `window.modbusAPI` is declared once, globally, in modbus.d.ts as `IModbusAPI`.
 // Re-declaring a structurally different shape here made the two augmentations
@@ -207,26 +247,22 @@ const ModbusDebugger: React.FC = () => {
     (addr: number, newVal: string) => {
       setMonitorData((prevData) => {
         if (!prevData) return null
-        let num = NaN
-        const s = newVal.trim()
+        // Reverse translation is delegated to parseValue, the exact inverse of
+        // formatValue: one word for the 16-bit formats, two for UINT32/FLOAT,
+        // or null when the text cannot be represented. Rejecting is
+        // deliberate — the previous branch fell through to parseInt(s, 10) and
+        // would happily write a garbage register for, say, "1.5" under FLOAT.
+        const words = parseValue(newVal, dataFormat)
+        if (!words) return prevData
 
-        if (s.toLowerCase().startsWith('0x')) {
-          num = parseInt(s, 16)
-        } else if (dataFormat === 'HEX' && /^[0-9A-Fa-f]+$/.test(s)) {
-          num = parseInt(s, 16)
-        } else {
-          num = parseInt(s, 10)
-        }
+        const index = addr - prevData.startAddr
+        if (index < 0 || index + words.length > prevData.values.length) return prevData
 
-        if (!isNaN(num)) {
-          const index = addr - prevData.startAddr
-          if (index >= 0 && index < prevData.values.length) {
-            const newValues = [...prevData.values]
-            newValues[index] = num
-            return { ...prevData, values: newValues }
-          }
-        }
-        return prevData
+        const newValues = [...prevData.values]
+        words.forEach((w, i) => {
+          newValues[index + i] = w
+        })
+        return { ...prevData, values: newValues }
       })
     },
     [dataFormat]
@@ -384,18 +420,34 @@ const ModbusDebugger: React.FC = () => {
 
       setSending(true)
       const execute = async () => {
+        // Honour the SELECTED write code. This used to re-derive it from the
+        // count (`count === 1 ? 6 : 16`), which silently ignored the user's
+        // choice and left 0x05 and 0x0F unreachable from the dropdown. Only a
+        // read code still falls back, since "write" was inferred in that case.
         let writeFC = fcNum
-        if (!customFcMode && [1, 2, 3, 4].includes(fcNum)) writeFC = count === 1 ? 6 : 16
+        if (!customFcMode && !WRITE_CODES.includes(fcNum)) writeFC = count === 1 ? 6 : 16
+
+        // Coil codes exchange booleans; register codes exchange 16-bit words.
+        const isCoil = COIL_CODES.includes(writeFC)
+        const payload: number[] | boolean[] = isCoil
+          ? valuesToWrite.map((v) => v !== 0)
+          : valuesToWrite
+
+        // 0x05 and 0x06 carry a single value; 0x0F and 0x10 carry arrays.
+        const single = writeFC === 5 || writeFC === 6
+
         await window.modbusAPI.write({
           functionCode: writeFC as number,
           address: startAddr,
-          values: count === 1 ? valuesToWrite[0] : valuesToWrite
+          values: single ? payload[0] : payload
         })
         addLog('SYS', `Write OK to ${formatAddress(startAddr, addrFormat, addrBase)}`)
 
         // Auto Refresh
         if (connected) {
-          const readFc = fcNum === 5 || fcNum === 15 ? 1 : 3
+          // Read back with the matching read code so the refresh looks at the
+          // same address space that was just written.
+          const readFc = COIL_CODES.includes(writeFC) ? 1 : 3
           const refreshRes = await window.modbusAPI.read({
             functionCode: readFc,
             address: startAddr,
@@ -424,7 +476,7 @@ const ModbusDebugger: React.FC = () => {
 
   const handleMainAction = () => {
     const fcNum = parseFC(effectiveFc)
-    const isWrite = !customFcMode ? [6, 16].includes(fcNum) : ![1, 2, 3, 4].includes(fcNum)
+    const isWrite = !customFcMode ? WRITE_CODES.includes(fcNum) : ![1, 2, 3, 4].includes(fcNum)
     if (isWrite) handleWrite()
     else handleRead(false)
   }
@@ -456,38 +508,78 @@ const ModbusDebugger: React.FC = () => {
       )
     }
 
-    const is32Bit = dataFormat === 'FLOAT' || dataFormat === 'UINT32'
+    const layout = ROW_LAYOUT[dataFormat]
+    const regsPerRow = layout.regs
+    const cellsPerRow = layout.cells
+    const step = regsPerRow / cellsPerRow
+
+    // Align the first row down to a row boundary and leave the gap as holes,
+    // so every row starts at a round address no matter where the read began.
+    const alignedStart = Math.floor(monitorData.startAddr / regsPerRow) * regsPerRow
+    const rowCount = Math.ceil(
+      (monitorData.startAddr - alignedStart + monitorData.values.length) / regsPerRow
+    )
+
+    const cells: React.ReactNode[] = []
+    for (let r = 0; r < rowCount; r++) {
+      const rowAddr = alignedStart + r * regsPerRow
+      cells.push(
+        <div
+          key={`ruler-${rowAddr}`}
+          className="sticky left-0 z-10 flex items-center justify-end bg-card pr-1 font-mono text-[10px] text-faint tabular-nums"
+        >
+          {formatAddress(rowAddr, addrFormat, addrBase)}
+        </div>
+      )
+      for (let c = 0; c < cellsPerRow; c++) {
+        const currentAddr = rowAddr + c * step
+        const idx = currentAddr - monitorData.startAddr
+
+        // Holes in the aligned rectangle: before the read's first address, or
+        // past its last.
+        if (idx < 0 || idx >= monitorData.values.length) {
+          cells.push(<div key={`pad-${currentAddr}`} aria-hidden="true" />)
+          continue
+        }
+
+        let isSelected = false
+        if (selection) {
+          const low = Math.min(selection.start, selection.end)
+          const high = Math.max(selection.start, selection.end)
+          isSelected = idx >= low && idx <= high
+        }
+
+        cells.push(
+          <RegisterBlock
+            key={currentAddr}
+            index={idx}
+            address={currentAddr}
+            value={monitorData.values[idx]}
+            nextValue={monitorData.values[idx + 1]}
+            format={dataFormat}
+            isSelected={isSelected}
+            onSelectionStart={handleSelectionStart}
+            onSelectionEnter={handleSelectionEnter}
+            onEdit={handleCellEdit}
+          />
+        )
+      }
+    }
 
     return (
-      <div className={is32Bit ? GRID_32 : GRID_16}>
-        {monitorData.values.map((val, idx) => {
-          if (is32Bit && idx % 2 !== 0) return null
-          const currentAddr = monitorData.startAddr + idx
-
-          let isSelected = false
-          if (selection) {
-            const low = Math.min(selection.start, selection.end)
-            const high = Math.max(selection.start, selection.end)
-            isSelected = idx >= low && idx <= high
-          }
-
-          return (
-            <RegisterBlock
-              key={currentAddr}
-              index={idx}
-              address={currentAddr}
-              value={val}
-              nextValue={monitorData.values[idx + 1]}
-              format={dataFormat}
-              addrFormat={addrFormat}
-              addrBase={addrBase}
-              isSelected={isSelected}
-              onSelectionStart={handleSelectionStart}
-              onSelectionEnter={handleSelectionEnter}
-              onEdit={handleCellEdit}
-            />
-          )
-        })}
+      <div className={layout.wide ? GRID_WIDE : GRID_NARROW}>
+        {/* Corner and column headers, sticky so the offsets stay readable
+            while scrolling a long read. */}
+        <div className="sticky top-0 left-0 z-20 bg-card" aria-hidden="true" />
+        {Array.from({ length: cellsPerRow }, (_, c) => (
+          <div
+            key={`head-${c}`}
+            className="sticky top-0 z-10 bg-card pb-1 text-center font-mono text-[10px] text-faint tabular-nums"
+          >
+            +{(c * step).toString(16).toUpperCase()}
+          </div>
+        ))}
+        {cells}
       </div>
     )
   }, [
@@ -553,15 +645,7 @@ const ModbusDebugger: React.FC = () => {
             memoized ELEMENT passed as a child keeps its referential identity, so
             React bails out of reconciling the entire grid subtree when this
             parent re-renders for an unrelated reason. Do not "tidy" this inward. */}
-        <DataMonitor
-          dataFormat={dataFormat}
-          setDataFormat={setDataFormat}
-          startAddr={monitorData?.startAddr ?? null}
-          cellCount={monitorData?.values.length ?? 0}
-          addrBase={addrBase}
-          addrFormat={addrFormat}
-          expanded={showLogs}
-        >
+        <DataMonitor dataFormat={dataFormat} setDataFormat={setDataFormat} expanded={showLogs}>
           {gridContent}
         </DataMonitor>
 

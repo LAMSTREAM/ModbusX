@@ -30,7 +30,7 @@ export interface LogItem {
   detail?: string
 }
 
-export type DataFormat = 'HEX' | 'DEC_U' | 'DEC_S' | 'UINT32' | 'ASCII' | 'FLOAT'
+export type DataFormat = 'HEX' | 'DEC_U' | 'DEC_S' | 'BIN' | 'UINT32' | 'ASCII' | 'FLOAT'
 export type AddressFormat = 'HEX' | 'DEC'
 
 export interface SavedConfig {
@@ -86,3 +86,36 @@ export const loadConfig = (): SavedConfig => {
     showRawLog: false
   }
 }
+
+/**
+ * The eight standard function codes, ascending.
+ *
+ * `value` stays DECIMAL because that is what `standardFc` has always held and
+ * what existing saved configs contain; only the label is hex. All eight are
+ * already implemented in `src/modbus/modbus-client.ts` — this list is what
+ * exposes them.
+ */
+export interface FunctionCode {
+  /** Decimal, as stored. */
+  value: string
+  /** `0x01`-style label. */
+  label: string
+  name: string
+  kind: 'read' | 'write'
+  /** Coil-oriented codes exchange booleans rather than 16-bit words. */
+  coil: boolean
+}
+
+export const FUNCTION_CODES: FunctionCode[] = [
+  { value: '1', label: '0x01', name: 'Read Coils', kind: 'read', coil: true },
+  { value: '2', label: '0x02', name: 'Read Discrete Inputs', kind: 'read', coil: true },
+  { value: '3', label: '0x03', name: 'Read Holding Registers', kind: 'read', coil: false },
+  { value: '4', label: '0x04', name: 'Read Input Registers', kind: 'read', coil: false },
+  { value: '5', label: '0x05', name: 'Write Single Coil', kind: 'write', coil: true },
+  { value: '6', label: '0x06', name: 'Write Single Register', kind: 'write', coil: false },
+  { value: '15', label: '0x0F', name: 'Write Multiple Coils', kind: 'write', coil: true },
+  { value: '16', label: '0x10', name: 'Write Multiple Registers', kind: 'write', coil: false }
+]
+
+export const WRITE_CODES = [5, 6, 15, 16]
+export const COIL_CODES = [1, 2, 5, 15]

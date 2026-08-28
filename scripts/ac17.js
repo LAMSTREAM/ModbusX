@@ -51,7 +51,7 @@ function probe(expected) {
   const buttons = settings ? [...settings.querySelectorAll('button')] : []
 
   const samples = {}
-  const cell = document.querySelector('[data-grid-body] > div > div:first-child')
+  const cell = document.querySelector('[data-grid-body] > div > div:has(input)')
   if (cell) samples['grid cell (idle)'] = bg(cell)
 
   const input = settings && settings.querySelector('input')
@@ -127,11 +127,11 @@ async function main() {
   // Expected opaque values, derived from the Step 5 token table. If Step 5 ever
   // adjusts a dark value, these move with it.
   const EXPECTED = {
-    'grid cell (idle)': 'rgb(38, 38, 42)', // --cell  #26262a
-    'text Input (idle)': 'rgb(27, 27, 30)', // --background #1b1b1e
-    'scan button (idle)': 'rgb(38, 38, 42)', // --cell via CONTROL_QUIET
-    'SelectTrigger (idle)': 'rgb(27, 27, 30)',
-    'ThemeToggle (idle)': 'rgb(27, 27, 30)'
+    'grid cell (idle)': 'rgb(50, 50, 56)', // --cell  #323238
+    'text Input (idle)': 'rgb(38, 38, 42)', // --background #26262a
+    'scan button (idle)': 'rgb(50, 50, 56)', // --cell via CONTROL_QUIET
+    'SelectTrigger (idle)': 'rgb(38, 38, 42)',
+    'ThemeToggle (idle)': 'rgb(38, 38, 42)'
   }
 
   const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()

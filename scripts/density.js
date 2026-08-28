@@ -44,11 +44,14 @@ function measure() {
   const grid = document.querySelector(GRID)
   if (!grid) return { error: `grid not found: ${GRID}` }
 
-  const cells = [...grid.children]
+  // The grid now also contains its own ruler and header cells, so count only
+  // the elements that hold a register input.
+  const cells = [...grid.children].filter((c) => c.querySelector('input'))
   if (!cells.length) return { error: 'grid has no cells — run a successful read first' }
 
   const cs = getComputedStyle(grid)
-  const tracks = cs.gridTemplateColumns.split(/\s+/).filter(Boolean).map(parseFloat)
+  // Drop the leading ruler-gutter track; the data columns are what AC7 is about.
+  const tracks = cs.gridTemplateColumns.split(/\s+/).filter(Boolean).map(parseFloat).slice(1)
   const allEqual = tracks.every((t) => Math.abs(t - tracks[0]) < 0.5)
 
   // "Fully visible" = the cell's box is entirely within the scroll container's

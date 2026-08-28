@@ -1,5 +1,5 @@
 import React from 'react'
-import type { AddressFormat } from '../lib/modbus-config'
+import { FUNCTION_CODES, type AddressFormat } from '../lib/modbus-config'
 import { parseFC, toWireAddress } from '../lib/modbus-format'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -91,12 +91,12 @@ const CommandBar: React.FC<CommandBarProps> = ({
 
   return (
     <div className={ROW}>
-      <div className="shrink-0 grow-0 basis-[220px]">
+      <div className="shrink-0 grow-0 basis-[300px]">
         <Label className={LABEL}>Function</Label>
         <div className="flex">
           {customFcMode ? (
             <Input
-              className={cn(CONTROL, 'w-[150px]', JOIN_LEFT)}
+              className={cn(CONTROL, 'w-[230px]', JOIN_LEFT)}
               value={customFcValue}
               onChange={(e) => setCustomFcValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && onCommand()}
@@ -104,15 +104,16 @@ const CommandBar: React.FC<CommandBarProps> = ({
             />
           ) : (
             <Select value={standardFc} onValueChange={setStandardFc}>
-              <SelectTrigger className={cn(CONTROL, 'w-[150px]', JOIN_LEFT)}>
+              <SelectTrigger className={cn(CONTROL, 'w-[230px] font-mono', JOIN_LEFT)}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="3">03 Read Holding</SelectItem>
-                <SelectItem value="4">04 Read Input</SelectItem>
-                <SelectItem value="1">01 Read Coils</SelectItem>
-                <SelectItem value="6">06 Write Single</SelectItem>
-                <SelectItem value="16">16 Write Multi</SelectItem>
+                {FUNCTION_CODES.map((fc) => (
+                  <SelectItem key={fc.value} value={fc.value}>
+                    <span className="font-mono">{fc.label}</span>
+                    <span className="ml-2 text-muted-foreground">{fc.name}</span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           )}

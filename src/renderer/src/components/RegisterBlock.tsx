@@ -1,6 +1,6 @@
 import React, { memo, useState } from 'react'
-import type { AddressFormat, DataFormat } from '../lib/modbus-config'
-import { formatAddress, formatValue } from '../lib/modbus-format'
+import type { DataFormat } from '../lib/modbus-config'
+import { formatValue } from '../lib/modbus-format'
 import { cn } from '../lib/utils'
 
 // Module-level and frozen. The grid renders these hundreds of times per poll,
@@ -29,22 +29,18 @@ const CELL_SELECTED = cn(CELL_BASE, 'border-selection-border bg-selection dark:b
 // `md:text-[Npx]` is not redundant — see Rule 1 in lib/ui-density.ts.
 const CELL_INPUT_BASE =
   'w-full border-0 bg-transparent p-0 text-center font-mono font-semibold shadow-none outline-none focus:outline-none'
-// `text-action` on the read-only variants is load-bearing, not decoration: the
-// blue tint is how a user tells a read-only cell (UINT32 / FLOAT / ASCII) from
-// an editable one at a glance. Nothing else in the AC set would catch its loss.
+// The blue tint used to mean "read-only". Every format round-trips now, so it
+// means "this cell spans TWO registers" instead — still load-bearing, because
+// editing a UINT32 or FLOAT cell rewrites the register after it as well and
+// nothing else on screen says so.
 const CELL_INPUT_16 = `${CELL_INPUT_BASE} text-[13px] md:text-[13px] text-foreground`
-const CELL_INPUT_16_RO = `${CELL_INPUT_BASE} pointer-events-none text-[13px] md:text-[13px] text-action`
-const CELL_INPUT_32 = `${CELL_INPUT_BASE} text-[14px] md:text-[14px] text-foreground`
-const CELL_INPUT_32_RO = `${CELL_INPUT_BASE} pointer-events-none text-[14px] md:text-[14px] text-action`
+const CELL_INPUT_32 = `${CELL_INPUT_BASE} text-[14px] md:text-[14px] text-action`
 
 export interface RegisterBlockProps {
   address: number
   value: number
   nextValue?: number
   format: DataFormat
-  addrFormat: AddressFormat
-  /** Display offset applied to the address label. */
-  addrBase: number
   index: number
   isSelected: boolean
   onSelectionStart: (index: number) => void
@@ -58,8 +54,6 @@ const RegisterBlock = memo<RegisterBlockProps>(
     value,
     nextValue,
     format,
-    addrFormat,
-    addrBase,
     index,
     isSelected,
     onSelectionStart,
@@ -69,22 +63,20 @@ const RegisterBlock = memo<RegisterBlockProps>(
     const [editingVal, setEditingVal] = useState<string>('')
     const [isEditing, setIsEditing] = useState(false)
 
-    const isReadOnly = format === 'FLOAT' || format === 'UINT32' || format === 'ASCII'
+    // Every format round-trips now — parseValue is the exact inverse of
+    // formatValue, including the two-register UINT32 and FLOAT — so no format
+    // is read-only any more.
+    const is32Bit = format === 'FLOAT' || format === 'UINT32'
     const displayVal = isEditing ? editingVal : formatValue(value, nextValue, format)
 
-    const is32Bit = format === 'FLOAT' || format === 'UINT32'
-    const addressLabel = is32Bit
-      ? `${formatAddress(address, addrFormat, addrBase)}-${formatAddress(address + 1, addrFormat, addrBase).slice(-2)}`
-      : formatAddress(address, addrFormat, addrBase)
-
     const handleFocus = () => {
-      if (isReadOnly) return
       setIsEditing(true)
-      if (format === 'HEX' && !value.toString(16).startsWith('0x')) {
-        setEditingVal(`0x${value.toString(16).toUpperCase().padStart(4, '0')}`)
-      } else {
-        setEditingVal(value.toString())
-      }
+      // Seed the buffer with what the cell is ALREADY showing. It used to seed
+      // `value.toString()` — plain decimal — with a special case for HEX, so
+      // focusing a BIN or ASCII or FLOAT cell swapped the display for a decimal
+      // number that parseValue would then refuse on blur. formatValue is the
+      // exact inverse of parseValue, so what you see is always what you edit.
+      setEditingVal(formatValue(value, nextValue, format))
     }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,7 +99,7 @@ const RegisterBlock = memo<RegisterBlockProps>(
     const handleMouseDown = () => onSelectionStart(index)
     const handleMouseEnter = () => onSelectionEnter(index)
     const handleClick = () => {
-      if (!isEditing && !isReadOnly) handleFocus()
+      if (!isEditing) handleFocus()
     }
 
     return (
@@ -117,30 +109,17 @@ const RegisterBlock = memo<RegisterBlockProps>(
         onClick={handleClick}
         className={isSelected ? CELL_SELECTED : isEditing ? CELL_EDITING : CELL_IDLE}
       >
-        <div
-          className={cn(
-            'mb-0.5 font-mono text-[10px]',
-            isSelected ? 'text-selection-foreground' : 'text-faint'
-          )}
-        >
-          {addressLabel}
-        </div>
+        {/* The per-cell address label is gone: the row ruler and the column
+            headers give the same information once, instead of 125 times, and
+            without them the cell is a third shorter — which buys back more
+            rows than the ruler gutter costs in columns. */}
         <input
           value={displayVal}
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          readOnly={isReadOnly}
-          className={
-            is32Bit
-              ? isReadOnly
-                ? CELL_INPUT_32_RO
-                : CELL_INPUT_32
-              : isReadOnly
-                ? CELL_INPUT_16_RO
-                : CELL_INPUT_16
-          }
+          className={is32Bit ? CELL_INPUT_32 : CELL_INPUT_16}
         />
       </div>
     )
@@ -151,9 +130,7 @@ const RegisterBlock = memo<RegisterBlockProps>(
       prev.nextValue === next.nextValue &&
       prev.isSelected === next.isSelected &&
       prev.format === next.format &&
-      prev.address === next.address &&
-      prev.addrFormat === next.addrFormat &&
-      prev.addrBase === next.addrBase
+      prev.address === next.address
     )
   }
 )
@@ -174,7 +151,7 @@ RegisterBlock.displayName = 'RegisterBlock'
 // sides stops distribution over a union, so two props added at once also fail.
 type Compared = Pick<
   RegisterBlockProps,
-  'value' | 'nextValue' | 'isSelected' | 'format' | 'address' | 'addrFormat' | 'addrBase'
+  'value' | 'nextValue' | 'isSelected' | 'format' | 'address'
 >
 type Stable = Pick<RegisterBlockProps, 'index' | 'onSelectionStart' | 'onSelectionEnter' | 'onEdit'>
 type Unaccounted = Exclude<keyof RegisterBlockProps, keyof Compared | keyof Stable>
